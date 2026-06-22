@@ -25,6 +25,9 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "drv_adc_sampling.h"
+#include "drv_spi_as5048a.h"
+#include "drv_tim_pwm.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -72,6 +75,13 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
+  /* 定义变量，用于存储时间戳 */
+  /* 通过 HAL_GetTick() 获取系统运行时间（单位: ms） */
+  /* 通过比较当前时间和预设时间戳，实现定时事件（如 LED 闪烁） */
+  /* 例如: 每 1000 ms 切换一次 LED 状态 */
+  uint32_t tick = 0U;
+  uint32_t tick_now = 0U;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -104,6 +114,18 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
+    /* PWM 驱动初始化（死区修复 + 初始占空比 50%）*/
+  drv_tim_pwm_init(&htim1);
+
+  /* ADC 采样驱动初始化（自校准 + 启动 DMA + 启动定时器 TRGO 触发）*/
+  drv_adc_sampling_init(&hadc1, &hadc2, &htim1, &htim6);
+
+  /* 使能 PWM 输出（MOE 开闸，六路开始输出 20kHz 波形）*/
+  drv_tim_pwm_enable();
+
+  tick = HAL_GetTick();
+  tick =tick +1000U;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -111,6 +133,17 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+
+    /* 获取当前时间戳 */
+    tick_now = HAL_GetTick();
+    /* 判断是否达到预设时间戳 */
+    if (tick_now >= tick)
+    {
+      /* 切换 LED 状态 */
+      HAL_GPIO_TogglePin(GPIOC, GPIO_Output_LED_Pin);
+      /* 更新预设时间戳（当前时间 + 1000 ms）*/
+      tick = tick_now + 1000U;
+    }
 
     /* USER CODE BEGIN 3 */
   }

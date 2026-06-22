@@ -27,12 +27,21 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
+message("CMake command: " ${CMAKE_COMMAND})
 
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
 
 # Create an executable object type
-add_executable(${CMAKE_PROJECT_NAME})
+add_executable(${CMAKE_PROJECT_NAME}
+    DriverLayer/Src/drv_adc_sampling.c
+    DriverLayer/Inc/drv_adc_sampling.h
+    DriverLayer/Src/drv_spi_as5048a.c
+    DriverLayer/Inc/drv_spi_as5048a.h
+    DriverLayer/Src/drv_tim_pwm.c
+    DriverLayer/Inc/drv_tim_pwm.h
+    ControlLayer/Inc/ctl_motor_foc.h
+    ControlLayer/Src/ctl_motor_foc.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -50,6 +59,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    DriverLayer/Inc
+    ControlLayer/Inc
+    ApplicationLayer/Inc
 )
 
 # Add project symbols (macros)

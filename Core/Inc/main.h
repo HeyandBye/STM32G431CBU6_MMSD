@@ -60,6 +60,8 @@ void Error_Handler(void);
 #define GPIO_EXTI13_BUTTON_Pin GPIO_PIN_13
 #define GPIO_EXTI13_BUTTON_GPIO_Port GPIOC
 #define GPIO_EXTI13_BUTTON_EXTI_IRQn EXTI15_10_IRQn
+#define GPIO_Output_TEST_Pin GPIO_PIN_4
+#define GPIO_Output_TEST_GPIO_Port GPIOA
 #define GPIO_Output_EN_Pin GPIO_PIN_4
 #define GPIO_Output_EN_GPIO_Port GPIOC
 #define GPIO_EXTI11_nFAULT_Pin GPIO_PIN_11
