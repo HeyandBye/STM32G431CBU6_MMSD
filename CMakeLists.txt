@@ -40,10 +40,20 @@ add_executable(${CMAKE_PROJECT_NAME}
     DriverLayer/Inc/drv_spi_as5048a.h
     DriverLayer/Src/drv_tim_pwm.c
     DriverLayer/Inc/drv_tim_pwm.h
-    ControlLayer/Inc/ctl_motor_foc.h
-    ControlLayer/Src/ctl_motor_foc.c
     DriverLayer/Inc/drv_spi_as5048a_debug.h
-    DriverLayer/Src/drv_spi_as5048a_debug.c)
+    DriverLayer/Src/drv_spi_as5048a_debug.c
+    ControlLayer/Inc/ctl_math.h
+    ControlLayer/Src/ctl_math.c
+    ControlLayer/Inc/ctl_pid.h
+    ControlLayer/Src/ctl_pid.c
+    ControlLayer/Inc/ctl_foc_core.h
+    ControlLayer/Src/ctl_foc_core.c
+    ControlLayer/Inc/ctl_foc_debug.h
+    ControlLayer/Src/ctl_foc_debug.c
+    ControlLayer/Inc/ctl_foc_openloop.h
+    ControlLayer/Src/ctl_foc_openloop.c
+    ControlLayer/Inc/ctl_foc_current.h
+    ControlLayer/Src/ctl_foc_current.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -69,6 +79,11 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+)
+
+# Enable printf float support (newlib-nano disables %f by default)
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -u _printf_float
 )
 
 # Remove wrong libob.a library dependency when using cpp files

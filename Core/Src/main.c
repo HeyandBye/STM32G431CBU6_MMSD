@@ -25,13 +25,18 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-#include "drv_adc_sampling.h"
-#include "drv_spi_as5048a.h"
-#include "drv_tim_pwm.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "drv_adc_sampling.h"
+#include "drv_spi_as5048a.h"
+#include "drv_spi_as5048a_debug.h"
+#include "drv_tim_pwm.h"
+#include "ctl_foc_core.h"
+#include "ctl_foc_debug.h"
+#include "ctl_foc_openloop.h"
+#include "ctl_foc_current.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +46,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+/** @brief DRV8313 nFAULT 功能开关: 1=启用, 0=关闭 */
+#define NFAULT_ENABLE  0
 
 /* USER CODE END PD */
 
@@ -53,6 +61,11 @@
 
 /* USER CODE BEGIN PV */
 
+#if NFAULT_ENABLE
+/** @brief DRV8313 nFAULT 标志（ISR 置 1，主循环检测并处理） */
+static volatile uint8_t nfault_triggered = 0;
+#endif
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,6 +76,24 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+#if NFAULT_ENABLE
+/**
+ * @brief   GPIO EXTI 回调（覆盖 HAL 弱定义）
+ * @note    由 EXTI15_10_IRQHandler → HAL_GPIO_EXTI_IRQHandler 链调用。
+ *          PB11 (nFAULT) 下降沿触发 → DRV8313 报告故障 → 紧急停机。
+ */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == GPIO_EXTI11_nFAULT_Pin) {
+        nfault_triggered = 1;
+        if (g_foc.state >= FOC_STATE_READY) {
+            drv_tim_pwm_moe_off();
+            HAL_GPIO_WritePin(GPIOC, GPIO_Output_EN_Pin, GPIO_PIN_RESET);
+        }
+    }
+}
+#endif
 
 /* USER CODE END 0 */
 
@@ -75,11 +106,8 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-  /* 定义变量，用于存储时间戳 */
-  /* 通过 HAL_GetTick() 获取系统运行时间（单位: ms） */
-  /* 通过比较当前时间和预设时间戳，实现定时事件（如 LED 闪烁） */
-  /* 例如: 每 1000 ms 切换一次 LED 状态 */
-  uint32_t tick = 0U;
+  uint32_t tick_led = 0U;
+  uint32_t tick_prn = 0U;
   uint32_t tick_now = 0U;
 
   /* USER CODE END 1 */
@@ -114,20 +142,14 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
-  /* AS5048A 磁编码器初始化（CS 拉高 + 等待 1ms 上电稳定）*/
-  drv_as5048a_init();
+  /* Step 4: 电流环跟踪 —— Id=0, Iq=1.0A */
+  FOC_SystemInit();
+  FOC_Current_SetRef(&g_foc, 0.0f, 0.3f);
+  FOC_Debug_Init();
+  printf("\r\n=== Step 4: Id=0, Iq=0.3A (phase=ACB) ===\r\n");
+  printf("Motor should spin.\r\n\r\n");
 
-  /* PWM 驱动初始化 */
-  drv_tim_pwm_init(&htim1);
-
-  /* ADC 采样驱动初始化 */
-  drv_adc_sampling_init(&hadc1, &hadc2, &htim1, &htim6);
-
-  /* 使能 PWM 输出 */
-  drv_tim_pwm_enable();
-
-  tick = HAL_GetTick();
-  tick = tick + 1000U;
+  tick_prn = HAL_GetTick() + 1000U;
 
   /* USER CODE END 2 */
 
@@ -137,15 +159,21 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* ---- LED 心跳（1 秒翻转一次，指示程序正常运行）---- */
+    /* ---- LED 心跳 ---- */
     tick_now = HAL_GetTick();
-    if (tick_now >= tick)
-    {
+    if (tick_now >= tick_led) {
       HAL_GPIO_TogglePin(GPIOC, GPIO_Output_LED_Pin);
-      tick = tick_now + 1000U;
+      tick_led = tick_now + 1000U;
     }
 
     /* USER CODE BEGIN 3 */
+
+    tick_now = HAL_GetTick();
+    if (tick_now >= tick_prn) {
+        FOC_Debug_Print_Compact(&g_foc);
+        tick_prn = tick_now + 1000U;
+    }
+
   }
   /* USER CODE END 3 */
 }

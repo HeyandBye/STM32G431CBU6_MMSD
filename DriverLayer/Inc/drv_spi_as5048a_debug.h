@@ -1,26 +1,26 @@
 /**
- ******************************************************************************
- * @file     drv_spi_as5048a_debug.h
- * @author   lidongyang
- * @version  0.0.1
- * @date     23-June-2026
- * @brief    AS5048A 驱动调试与验证模块
- *
- *           提供 DWT 周期计数器宏 + 逐函数可用性/耗时测试框架。
- *           所有开关宏集中在本文件，方便一键启停。
- *
- * @note     使用方法：
- *           1. main.c 中 #include "drv_spi_as5048a_debug.h"
- *           2. 调用 drv_as5048a_init()（内部已初始化 DWT）
- *           3. while(1) 中调用 drv_as5048a_debug_run_tests()
- *           4. 各测试开关见下方 TEST_ENABLE_xxx 宏
- *
- *           观测方式：
- *             GPIO 波形 — GPIOA_PIN_4 脉冲宽度 = 函数耗时
- *             变量观察  — test_xxx / test_cycle_xxx（调试器查看）
- *             串口输出  — UART1(115200) 打印结果表格
- ******************************************************************************
- */
+******************************************************************************
+* @file     drv_spi_as5048a_debug.h
+* @author   lidongyang
+* @version  0.0.1
+* @date     23-June-2026
+* @brief    AS5048A 驱动调试与验证模块
+*
+* @note     提供 DWT 周期计数器宏 + 逐函数可用性/耗时测试框架。
+*           所有开关宏集中在本文件, 方便一键启停。
+*
+*           使用方法:
+*           1. main.c 中 #include "drv_spi_as5048a_debug.h"
+*           2. 调用 drv_as5048a_init()（内部已初始化 DWT）
+*           3. while(1) 中调用 drv_as5048a_debug_run_tests()
+*           4. 各测试开关见下方 TEST_ENABLE_xxx 宏
+*
+*           观测方式:
+*            - GPIO 波形: GPIOA_PIN_4 脉冲宽度 = 函数耗时
+*            - 变量观察:  test_xxx / test_cycle_xxx（调试器查看）
+*            - 串口输出:  UART1(115200) 打印结果表格
+******************************************************************************
+*/
 
 #ifndef DRV_SPI_AS5048A_DEBUG_H
 #define DRV_SPI_AS5048A_DEBUG_H
@@ -56,17 +56,17 @@ extern "C" {
 
 /** @brief 总开关：1 = 启用所有 AS5048A 测试；0 = 完全跳过 */
 #ifndef TEST_AS5048A_ENABLE
-#define TEST_AS5048A_ENABLE      0
+#define TEST_AS5048A_ENABLE      1
 #endif
 
 /** @brief 串口开关：1 = UART1 打印结果表格；0 = 仅 GPIO + 变量 */
 #ifndef TEST_UART_ENABLE
-#define TEST_UART_ENABLE         0
+#define TEST_UART_ENABLE         1
 #endif
 
 /** @brief 逐函数测试开关 */
 #ifndef TEST_ENABLE_READ_ANGLE
-#define TEST_ENABLE_READ_ANGLE    0   /* drv_as5048a_read_angle()     */
+#define TEST_ENABLE_READ_ANGLE    1   /* drv_as5048a_read_angle()     */
 #endif
 #ifndef TEST_ENABLE_READ_MAG
 #define TEST_ENABLE_READ_MAG      0   /* drv_as5048a_read_magnitude() */
@@ -90,11 +90,11 @@ extern "C" {
 
 /** @name 函数返回值 */
 /** @{ */
-extern volatile uint16_t test_angle;       /* drv_as5048a_read_angle()     */
-extern volatile uint16_t test_mag;         /* drv_as5048a_read_magnitude() */
-extern volatile uint16_t test_diag;        /* drv_as5048a_read_diag()      */
-extern volatile uint16_t test_reg;         /* drv_as5048a_read_reg()       */
-extern volatile uint8_t  test_err;         /* drv_as5048a_get_error()      */
+extern volatile uint16_t test_angle;       /**< drv_as5048a_read_angle()     */
+extern volatile uint16_t test_mag;         /**< drv_as5048a_read_magnitude() */
+extern volatile uint16_t test_diag;        /**< drv_as5048a_read_diag()      */
+extern volatile uint16_t test_reg;         /**< drv_as5048a_read_reg()       */
+extern volatile uint8_t  test_err;         /**< drv_as5048a_get_error()      */
 /** @} */
 
 /** @name 函数耗时（单位：CPU 周期） */

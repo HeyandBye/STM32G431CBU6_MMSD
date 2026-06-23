@@ -262,8 +262,8 @@ void TIM1_UP_TIM16_IRQHandler(void)
   /* 下面是用于查看ADC转换时间的语句 */
   /* HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET); */
 
-  /* 下面是用于查看SPI通讯时间的语句 */
-  /* HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET); */
+  /* 下面是用于查看FOC时间的语句 */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 
   /* USER CODE END TIM1_UP_TIM16_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
