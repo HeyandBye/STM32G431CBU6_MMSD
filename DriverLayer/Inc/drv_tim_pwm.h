@@ -7,9 +7,9 @@
 * @brief    TIM1 六路互补 PWM 驱动
 *
 * @attention    硬件引脚：
-*               PA8  = TIM1_CH1  (A 相高侧)   PB13 = TIM1_CH1N (A 相低侧)
-*               PA9  = TIM1_CH2  (B 相高侧)   PB14 = TIM1_CH2N (B 相低侧)
-*               PA10 = TIM1_CH3  (C 相高侧)   PB15 = TIM1_CH3N (C 相低侧)
+*               PA8  = TIM1_CH1  (A 相高侧, AF6)   PB13 = TIM1_CH1N (A 相低侧, AF6)
+*               PA9  = TIM1_CH2  (B 相高侧, AF6)   PB14 = TIM1_CH2N (B 相低侧, AF6)
+*               PA10 = TIM1_CH3  (C 相高侧, AF6)   PB15 = TIM1_CH3N (C 相低侧, AF4 !)
 ******************************************************************************
 */
 
@@ -34,9 +34,17 @@ extern "C" {
 
 /**
  * @brief 互补通道开关: 1 = 使能 CH1N/CH2N/CH3N（六路输出）, 0 = 仅主通道（三路输出）
- * @note  3 路 PWM + 3 路使能引脚（EN_A/B/C）→ 最适合六步换向的 Hi-Z 控制。
- *        六路输出用于正弦波/FOC 模式, 互补调制降低谐波。
- *        当前设为 0（仅主通道）, 因调试阶段使用 DRV8313 EN 引脚控制。
+ * @note  互补通道（CHxN）是相对于主通道（CHx）的反相 PWM 信号（带死区插入），
+ *        不是独立的使能引脚。六路输出模式将主/互补通道直接连接到 MOSFET
+ *        上下桥臂栅极，由 TIM1 硬件自动生成互补波形。
+ *
+ *        当前项目采用正弦波/FOC 控制，仅使用三路主通道 PWM 输出，
+ *        三相共用一个 EN 使能引脚（DRV8313 的 EN 引脚）同时控制
+ *        所有相位的输出通断，不进行六步换向的逐相 Hi-Z 控制。
+ *
+ *        六路互补输出模式（CHx + CHxN）适合直接驱动 MOSFET 桥臂，
+ *        互补调制可降低谐波并减小转矩脉动。当前设为 0（仅主通道），
+ *        因使用 DRV8313 集成驱动芯片，其内部已处理上下桥臂驱动逻辑。
  */
 #define PWM_ENABLE_N_CHANNELS 0U
 
@@ -116,24 +124,6 @@ void drv_tim_pwm_set_duty(uint16_t a, uint16_t b, uint16_t c);
  * @param   a/b/c  占空比（0.0 = 下管全通, 0.5 = 50%, 1.0 = 上管全通）
  */
 void drv_tim_pwm_set_duty_f(float a, float b, float c);
-
-/**
- * @brief   更新 TIM1 CCER 寄存器（六步换向用, 读-修改-写原子操作）
- * @param   clr_mask  CCER 位清零掩码（清除要禁能的通道使能位）
- * @param   set_mask  CCER 位置位掩码（设置要使能的通道使能位）
- * @note    CCER 直接更新用于六步换向中动态切换相导通状态。
- *          CCER 更新和 CCR 更新应在同一 ISR 周期内完成。
- */
-void drv_tim_pwm_ccer_apply(uint32_t clr_mask, uint32_t set_mask);
-
-/**
- * @brief   设置六步换向 EN 引脚（PC4=A, PC13=B, PC15=C）
- * @param   en_a / en_b / en_c  0 = 关断, 非 0 = 使能
- * @note    使用 GPIO BSRR 寄存器原子写: 低 16-bit 置位, 高 16-bit 复位。
- *          BSRR 的优点: 单次写操作同时完成置位和复位, 无中间态。
- *          避免了 Read-Modify-Write 可能引入的竞态条件。
- */
-void drv_tim_pwm_en_pins_set(uint8_t en_a, uint8_t en_b, uint8_t en_c);
 
 #ifdef __cplusplus
 }

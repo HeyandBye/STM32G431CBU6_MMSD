@@ -58,7 +58,7 @@ volatile float g_bus_vol = 0.0f;  /*  直流母线电压 (V)                    
  *            不校准会导致增益误差 ±5%（G4 典型值 12-bit + 自校准后误差 < ±2 LSB）。
  *            校准时间: 约 82 个 ADC 时钟周期 ≈ 2µs @ 42.5MHz.
  */
- void drv_adc_sampling_init(ADC_HandleTypeDef *hadc1, ADC_HandleTypeDef *hadc2,
+void drv_adc_sampling_init(ADC_HandleTypeDef *hadc1, ADC_HandleTypeDef *hadc2,
                            TIM_HandleTypeDef *htim1, TIM_HandleTypeDef *htim6)
 {
     /* 1. ADC 自校准（STM32G4 上电后精度保证的必要步骤） */
@@ -69,8 +69,18 @@ volatile float g_bus_vol = 0.0f;  /*  直流母线电压 (V)                    
     (void)HAL_ADC_Start_DMA(hadc1, (uint32_t *)adc1_dma_buf, 2U);
     (void)HAL_ADC_Start_DMA(hadc2, (uint32_t *)adc2_dma_buf, 2U);
 
-    /* 3-4. 使能定时器（TIM6 先启动, TIM1 后启动:
-           确保 PWM 开始前母线电压/电流采集已就绪） */
+    /* 3-4. 使能定时器更新中断 + 计数器:
+     *       TIM6 先启动（1kHz TRGO → ADC2 母线采集）
+     *       TIM1 后启动（20kHz TRGO → ADC1 相电流采集）
+     *
+     *       __HAL_TIM_ENABLE_IT: 使能更新中断（UIF）
+     *       用于在主循环/其他 ISR 中同步定时器周期事件
+     *       （例如：TIM1 更新中断中触发控制环路计算）
+     *
+     *       __HAL_TIM_ENABLE: 启动计数器, 开始产生 TRGO
+     *       注意：即使不使能更新中断, TRGO 仍会正常输出,
+     *       使能 IT 是为了额外利用更新中断事件。
+     */
     __HAL_TIM_ENABLE_IT(htim6, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(htim6);
 

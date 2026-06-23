@@ -114,17 +114,20 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
-    /* PWM 驱动初始化（死区修复 + 初始占空比 50%）*/
+  /* AS5048A 磁编码器初始化（CS 拉高 + 等待 1ms 上电稳定）*/
+  drv_as5048a_init();
+
+  /* PWM 驱动初始化 */
   drv_tim_pwm_init(&htim1);
 
-  /* ADC 采样驱动初始化（自校准 + 启动 DMA + 启动定时器 TRGO 触发）*/
+  /* ADC 采样驱动初始化 */
   drv_adc_sampling_init(&hadc1, &hadc2, &htim1, &htim6);
 
-  /* 使能 PWM 输出（MOE 开闸，六路开始输出 20kHz 波形）*/
+  /* 使能 PWM 输出 */
   drv_tim_pwm_enable();
 
   tick = HAL_GetTick();
-  tick =tick +1000U;
+  tick = tick + 1000U;
 
   /* USER CODE END 2 */
 
@@ -134,14 +137,11 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* 获取当前时间戳 */
+    /* ---- LED 心跳（1 秒翻转一次，指示程序正常运行）---- */
     tick_now = HAL_GetTick();
-    /* 判断是否达到预设时间戳 */
     if (tick_now >= tick)
     {
-      /* 切换 LED 状态 */
       HAL_GPIO_TogglePin(GPIOC, GPIO_Output_LED_Pin);
-      /* 更新预设时间戳（当前时间 + 1000 ms）*/
       tick = tick_now + 1000U;
     }
 

@@ -37,7 +37,8 @@ extern "C" {
 
 /**
  * @brief TMCS1107A3B 电流转换系数 (A / ADC LSB)
- * @note  推导:
+ * @note  ADC 参考电压 Vref = VDDA = 3.3V（与 MCU 供电共用）
+ *        推导:
  *        ADC 每 LSB 电压 = Vref / 2^N = 3.3 / 4096 ≈ 0.8057mV
  *        传感器灵敏度 S = 200mV/A
  *        电流刻度 = (Vref / 2^N) / S = 0.8057mV / 200mV/A = 0.004028 A/LSB

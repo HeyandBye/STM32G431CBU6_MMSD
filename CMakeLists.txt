@@ -41,7 +41,9 @@ add_executable(${CMAKE_PROJECT_NAME}
     DriverLayer/Src/drv_tim_pwm.c
     DriverLayer/Inc/drv_tim_pwm.h
     ControlLayer/Inc/ctl_motor_foc.h
-    ControlLayer/Src/ctl_motor_foc.c)
+    ControlLayer/Src/ctl_motor_foc.c
+    DriverLayer/Inc/drv_spi_as5048a_debug.h
+    DriverLayer/Src/drv_spi_as5048a_debug.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
