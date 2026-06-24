@@ -24,6 +24,8 @@
 #include "ctl_foc_core.h"
 #include "ctl_foc_openloop.h"
 #include "ctl_foc_current.h"
+#include "ctl_foc_speed.h"
+#include "ctl_foc_position.h"
 #include "drv_adc_sampling.h"
 #include "drv_spi_as5048a.h"
 #include "drv_tim_pwm.h"
@@ -77,7 +79,7 @@ void FOC_SystemInit(void)
     drv_adc_register_conv_cplt_callback(FOC_OpenLoop_Run_Callback);
 #elif FOC_MODE == FOC_MODE_CURRENT
     {
-        FOC_Current_Config_t cfg = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.05f, 6.0f, 0.05f};
+        FOC_Current_Config_t cfg = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
         FOC_Current_Init(&g_foc, &cfg);
     }
     FOC_Current_CalibrateEncoder(&g_foc,
@@ -86,6 +88,47 @@ void FOC_SystemInit(void)
     FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
     FOC_Current_Start(&g_foc);
     drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
+#elif FOC_MODE == FOC_MODE_SPEED
+    {
+        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
+        FOC_Current_Init(&g_foc, &cfg_i);
+    }
+    FOC_Current_CalibrateEncoder(&g_foc,
+                                 drv_as5048a_read_angle,
+                                 drv_tim_pwm_set_duty_f);
+    FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
+    FOC_Current_Start(&g_foc);
+    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
+    {
+        FOC_Speed_Config_t cfg_s = {0.002f, 0.001f, 0.0f, 1.0f, 1.0f, 2000.0f, 0.1f};
+        FOC_Speed_Init(&g_foc, &cfg_s);
+    }
+    FOC_Speed_SetRef(&g_foc, 0.0f);
+    FOC_Speed_Start(&g_foc);
+#elif FOC_MODE == FOC_MODE_POSITION
+    {
+        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
+        FOC_Current_Init(&g_foc, &cfg_i);
+    }
+    FOC_Current_CalibrateEncoder(&g_foc,
+                                 drv_as5048a_read_angle,
+                                 drv_tim_pwm_set_duty_f);
+    FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
+    FOC_Current_Start(&g_foc);
+    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
+    {
+        FOC_Speed_Config_t cfg_s = {0.002f, 0.001f, 0.0f, 1.0f, 1.0f, 2000.0f, 0.1f};
+        FOC_Speed_Init(&g_foc, &cfg_s);
+    }
+    FOC_Speed_SetRef(&g_foc, 0.0f);
+    FOC_Speed_Start(&g_foc);
+    {
+        FOC_Position_Config_t cfg_p = {0.10f, 0.0f, 0.0f, 1.0f, 500.0f, 0.1f};
+        FOC_Position_Init(&g_foc, &cfg_p);
+    }
+    FOC_Position_SetRef(&g_foc, 0U);
+    FOC_Position_Start(&g_foc);
+    HAL_TIM_Base_Start_IT(&htim7);
 #else
     /* SPEED / POSITION: 待实现 */
     drv_adc_register_conv_cplt_callback(NULL);

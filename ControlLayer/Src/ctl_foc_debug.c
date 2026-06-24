@@ -179,15 +179,13 @@ void FOC_Debug_Print_Compact(const FOC_t *foc)
 
     if (!header_printed) {
         header_printed = 1;
-        printf("  tick_ms  Id_ref    Id      Iq_ref   Iq      Vd      Vq      Vbus    duty_a  theta\r\n");
+        printf("  tick   Id       Iq       Vd      Vq      rpm   theta\r\n");
     }
 
-    printf("%8lu  %+.4f  %+.4f  %+.4f  %+.4f  %+.3f  %+.3f  %5.2f  %5.3f  %6.2f\r\n",
+    printf("%6lu  %+.4f  %+.4f  %+.3f  %+.3f  %6.1f  %6.2f\r\n",
            (unsigned long)HAL_GetTick(),
-           (double)foc->id_ref, (double)foc->id,
-           (double)foc->iq_ref, (double)foc->iq,
+           (double)foc->id, (double)foc->iq,
            (double)foc->vd, (double)foc->vq,
-           (double)foc->vbus, (double)foc->duty_a,
-           (double)foc->theta_elec);
+           (double)foc->speed_rpm, (double)foc->theta_elec);
 }
 

@@ -37,6 +37,8 @@
 #include "ctl_foc_debug.h"
 #include "ctl_foc_openloop.h"
 #include "ctl_foc_current.h"
+#include "ctl_foc_speed.h"
+#include "ctl_foc_position.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +51,9 @@
 
 /** @brief DRV8313 nFAULT 功能开关: 1=启用, 0=关闭 */
 #define NFAULT_ENABLE  0
+
+/** @brief 位置环自动步进: 1=每500ms转60°, 0=手动拧到新位置保持3秒即锁定 */
+#define POS_AUTO_STEP  1
 
 /* USER CODE END PD */
 
@@ -109,6 +114,14 @@ int main(void)
   uint32_t tick_led = 0U;
   uint32_t tick_prn = 0U;
   uint32_t tick_now = 0U;
+#if POS_AUTO_STEP
+  uint32_t tick_pos = 0U;
+  float    pos_cmd = 0.0f;
+  int      pos_step = 0;
+#else
+  uint32_t tick_hold = 0U;         /* 手动拧偏后持续偏离的起始时刻 */
+  uint8_t  hold_active = 0;        /* 1=正在计时, 0=未偏离或已复位 */
+#endif
 
   /* USER CODE END 1 */
 
@@ -142,12 +155,19 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
-  /* Step 4: 电流环跟踪 —— Id=0, Iq=1.0A */
+  /* 位置闭环 */
   FOC_SystemInit();
-  FOC_Current_SetRef(&g_foc, 0.0f, 0.3f);
   FOC_Debug_Init();
-  printf("\r\n=== Step 4: Id=0, Iq=0.3A (phase=ACB) ===\r\n");
-  printf("Motor should spin.\r\n\r\n");
+#if POS_AUTO_STEP
+  /* 自动步进: 每 0.5s 转 60° */
+  FOC_Position_SetRef(&g_foc, 0U);
+  printf("\r\n=== Position Loop (auto step 60deg/0.5s) ===\r\n\r\n");
+  tick_pos = HAL_GetTick() + 500U;
+#else
+  /* 手动示教: 锁在当前角度, 拧偏保持6秒即更新目标 */
+  FOC_Position_SetRef(&g_foc, g_foc.raw_angle);
+  printf("\r\n=== Position Loop (hold-6s-to-relock) ===\r\n\r\n");
+#endif
 
   tick_prn = HAL_GetTick() + 1000U;
 
@@ -171,8 +191,42 @@ int main(void)
     tick_now = HAL_GetTick();
     if (tick_now >= tick_prn) {
         FOC_Debug_Print_Compact(&g_foc);
-        tick_prn = tick_now + 1000U;
+        tick_prn = tick_now + 20U;
     }
+
+#if POS_AUTO_STEP
+    /* 自动步进: 每 0.5s 转 60° (2731 LSB), 持续同向旋转 */
+    tick_now = HAL_GetTick();
+    if (tick_now >= tick_pos) {
+        pos_step++;
+        pos_cmd += 2731.0f;
+        CTL_PID_SetSetpoint(&g_foc.pid_pos, pos_cmd);
+        printf("\r\n--- Step %d: pos=%.0f LSB (%.0f deg) ---\r\n\r\n",
+               pos_step, (double)pos_cmd, (double)(pos_step * 60.0f));
+        tick_pos = tick_now + 500U;
+    }
+#else
+    /* 手动示教: 拧偏超过 500 LSB (~11°) 并保持 6 秒 → 锁定新位置 */
+    tick_now = HAL_GetTick();
+    {
+        float sp  = g_foc.pid_pos.setpoint;
+        float fb  = g_foc.unwrapped_pos;
+        float err = sp - fb;
+        if (err < 0.0f) err = -err;
+        if (err > 500.0f) {
+            if (!hold_active) {
+                hold_active = 1;
+                tick_hold   = tick_now;
+            } else if (tick_now - tick_hold >= 6000U) {
+                CTL_PID_SetSetpoint(&g_foc.pid_pos, fb);
+                printf("\r\n--- Hold 6s: locked at %.0f LSB ---\r\n\r\n", (double)fb);
+                hold_active = 0;
+            }
+        } else {
+            hold_active = 0;
+        }
+    }
+#endif
 
   }
   /* USER CODE END 3 */

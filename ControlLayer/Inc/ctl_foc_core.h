@@ -97,6 +97,21 @@ typedef struct {
     /* ---- 诊断 ---- */
     uint32_t      loop_count;  /**< 控制周期计数（溢出自动回绕）         */
     uint32_t      fault_code;  /**< 故障码（0=无故障，见 FOC_FAULT_*）  */
+    float         speed_rpm;   /**< 机械转速 (RPM), TIM6 ISR 内 1kHz 更新 */
+    float         theta_prev;  /**< 上一周期电角度, 转速计算用            */
+
+    /* ---- 速度环 ---- */
+    CTL_PID_t     pid_speed;   /**< 速度 PID 控制器                      */
+    float         speed_ref;   /**< 目标转速 (RPM)                       */
+    float         speed_iq_limit; /**< 速度环输出 Iq 限幅 (A)            */
+    float         speed_limit; /**< 转速硬限幅 (RPM)                     */
+
+    /* ---- 位置环 ---- */
+    CTL_PID_t     pid_pos;     /**< 位置 PID 控制器                      */
+    uint16_t      pos_ref;     /**< 目标位置 (编码器 raw)                */
+    float         pos_speed_limit; /**< 位置环输出限幅 (RPM)              */
+    float         unwrapped_pos;   /**< 展开后的累计位置 (LSB, 无回绕)      */
+    uint16_t      raw_prev;        /**< 上一周期 raw_angle, 展开计算用       */
 } FOC_t;
 
 /*==========================================================================*/
@@ -119,17 +134,7 @@ typedef struct {
 #define FOC_MODE_POSITION  4  /**< 位置闭环（电流内环 + 位置外环）         */
 
 /** @brief 当前活跃的 FOC 模式（编译期常量，修改此处切换模式） */
-#define FOC_MODE  FOC_MODE_CURRENT
-
-/*==========================================================================*/
-/* PWM 相序映射（当电机物理相序与 SVPWM 输出的 A-B-C 不一致时修改）            */
-/*==========================================================================*/
-
-#define FOC_PHASE_ABC  0  /**< 标准相序: A→A, B→B, C→C                   */
-#define FOC_PHASE_ACB  1  /**< A-C 互换:  A→C, B→B, C→A                   */
-
-/** @brief 当前相序映射（修改此处匹配实际电机接线） */
-#define FOC_PHASE_ORDER  FOC_PHASE_ACB
+#define FOC_MODE  FOC_MODE_POSITION
 
 /*==========================================================================*/
 /* 全局 FOC 实例                                                             */

@@ -53,7 +53,11 @@ add_executable(${CMAKE_PROJECT_NAME}
     ControlLayer/Inc/ctl_foc_openloop.h
     ControlLayer/Src/ctl_foc_openloop.c
     ControlLayer/Inc/ctl_foc_current.h
-    ControlLayer/Src/ctl_foc_current.c)
+    ControlLayer/Src/ctl_foc_current.c
+    ControlLayer/Inc/ctl_foc_speed.h
+    ControlLayer/Src/ctl_foc_speed.c
+    ControlLayer/Inc/ctl_foc_position.h
+    ControlLayer/Src/ctl_foc_position.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)

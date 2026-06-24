@@ -192,6 +192,8 @@ void FOC_Current_Start(FOC_t *foc)
     foc->state      = FOC_STATE_RUNNING;
     foc->loop_count = 0U;
     foc->fault_code = FOC_FAULT_NONE;
+    foc->speed_rpm  = 0.0f;
+    foc->theta_prev = 0.0f;
 }
 
 /**
@@ -268,20 +270,8 @@ void FOC_Current_Step(FOC_t   *foc,
     arm_sin_cos_f32(foc->theta_elec * 57.295779513f,
                     &foc->sin_theta, &foc->cos_theta);
 
-    /* ACB: 电角度偏移 -120°, 让 Vq 退出饱和 */
-#if FOC_PHASE_ORDER == FOC_PHASE_ACB
-    foc->theta_elec -= 4.188790205f;
-    if (foc->theta_elec < 0.0f) foc->theta_elec += 69.115038379f;
-    arm_sin_cos_f32(foc->theta_elec * 57.295779513f,
-                    &foc->sin_theta, &foc->cos_theta);
-#endif
-
-    /* 2. Clarke（ACB: 物理Ia=逻辑Ic → 逻辑Ia=-(Ib+Ic)=-(ia+ib)） */
-#if FOC_PHASE_ORDER == FOC_PHASE_ACB
-    CTL_Clarke(-(ia + ib), ib, &foc->i_alpha, &foc->i_beta);
-#else
+    /* 2. Clarke */
     CTL_Clarke(ia, ib, &foc->i_alpha, &foc->i_beta);
-#endif
 
     /* 3. Park */
     CTL_Park(foc->i_alpha, foc->i_beta, foc->theta_elec,
@@ -300,13 +290,8 @@ void FOC_Current_Step(FOC_t   *foc,
               &foc->duty_a, &foc->duty_b, &foc->duty_c);
 
     /* 7. 诊断 */
-#if FOC_PHASE_ORDER == FOC_PHASE_ACB
-    foc->ia    = -(ia + ib);
-    foc->ib    = ib;
-#else
     foc->ia    = ia;
     foc->ib    = ib;
-#endif
     foc->vbus  = vbus;
     foc->loop_count++;
 }
@@ -335,12 +320,8 @@ void FOC_Current_Run(FOC_t *foc)
     /* FOC 算法 */
     FOC_Current_Step(foc, raw_angle, ia, ib, vbus);
 
-    /* 写 PWM（按 FOC_PHASE_ORDER 重映射相序） */
-#if FOC_PHASE_ORDER == FOC_PHASE_ACB
-    drv_tim_pwm_set_duty_f(foc->duty_c, foc->duty_b, foc->duty_a);
-#else
+    /* 写 PWM */
     drv_tim_pwm_set_duty_f(foc->duty_a, foc->duty_b, foc->duty_c);
-#endif
 
     /* 故障检测 */
     fault = FOC_FAULT_NONE;

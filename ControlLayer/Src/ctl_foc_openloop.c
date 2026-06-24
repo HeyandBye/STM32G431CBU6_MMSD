@@ -204,12 +204,8 @@ void FOC_OpenLoop_Run(FOC_OpenLoop_t *fol)
     /* 开环 Step: 虚拟角度累加 + InvPark + SVPWM */
     FOC_OpenLoop_Step(fol, vbus, raw_angle);
 
-    /* 更新 PWM 占空比（按 FOC_PHASE_ORDER 重映射相序） */
-#if FOC_PHASE_ORDER == FOC_PHASE_ACB
-    drv_tim_pwm_set_duty_f(fol->duty_c, fol->duty_b, fol->duty_a);
-#else
+    /* 更新 PWM 占空比 */
     drv_tim_pwm_set_duty_f(fol->duty_a, fol->duty_b, fol->duty_c);
-#endif
 }
 
 /*==========================================================================*/
