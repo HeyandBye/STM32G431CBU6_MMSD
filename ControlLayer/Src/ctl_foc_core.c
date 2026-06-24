@@ -26,6 +26,7 @@
 #include "ctl_foc_current.h"
 #include "ctl_foc_speed.h"
 #include "ctl_foc_position.h"
+#include "ctl_foc_damper.h"
 #include "drv_adc_sampling.h"
 #include "drv_spi_as5048a.h"
 #include "drv_tim_pwm.h"
@@ -107,7 +108,8 @@ void FOC_SystemInit(void)
     FOC_Speed_Start(&g_foc);
 #elif FOC_MODE == FOC_MODE_POSITION
     {
-        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
+        /* 电流 PI 从 4.0/0.3 降到 2.0/0.1: 减小 ADC 噪声放大, 静止时不振 */
+        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 2.0f, 0.1f, 2.0f, 0.1f};
         FOC_Current_Init(&g_foc, &cfg_i);
     }
     FOC_Current_CalibrateEncoder(&g_foc,
@@ -123,14 +125,31 @@ void FOC_SystemInit(void)
     FOC_Speed_SetRef(&g_foc, 0.0f);
     FOC_Speed_Start(&g_foc);
     {
-        FOC_Position_Config_t cfg_p = {0.10f, 0.0f, 0.0f, 1.0f, 500.0f, 0.1f};
+        FOC_Position_Config_t cfg_p = {0.10f, 0.0f, 0.03f, 1.0f, 500.0f, 0.1f};
         FOC_Position_Init(&g_foc, &cfg_p);
     }
     FOC_Position_SetRef(&g_foc, 0U);
     FOC_Position_Start(&g_foc);
     HAL_TIM_Base_Start_IT(&htim7);
+#elif FOC_MODE == FOC_MODE_DAMPER
+    {
+        /* 阻尼模式用极低 PI 增益: 云台电机电感极小(µH级),
+         * 电流环带宽过高会与阻尼反馈形成振荡。kp=0.3/ki=0.01 约 1kHz 带宽 */
+        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 0.3f, 0.01f, 0.3f, 0.01f};
+        FOC_Current_Init(&g_foc, &cfg_i);
+    }
+    FOC_Current_CalibrateEncoder(&g_foc,
+                                 drv_as5048a_read_angle,
+                                 drv_tim_pwm_set_duty_f);
+    /* 校准后 PWM 归 50%，避免电流环启动撞上校准电压 */
+    drv_tim_pwm_set_duty_f(0.5f, 0.5f, 0.5f);
+    FOC_Current_SetRef(&g_foc, 0.0f, 0.0f);
+    FOC_Current_Start(&g_foc);
+    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
+    /* 阻尼增益 0.02 A/RPM: 柔和阻力, 避免与电流环形成机械振荡 */
+    FOC_Damper_Init(&g_foc, 0.02f);
+    HAL_TIM_Base_Start_IT(&htim6);
 #else
-    /* SPEED / POSITION: 待实现 */
     drv_adc_register_conv_cplt_callback(NULL);
 #endif
 }
@@ -194,6 +213,44 @@ void FOC_EmergencyStop(FOC_t *foc)
 
     CTL_PID_Reset(&foc->pid_id);
     CTL_PID_Reset(&foc->pid_iq);
+}
+
+/**
+ * @brief   尝试从故障中恢复（FAULT → RUNNING）
+ * @param   foc  FOC 控制器指针
+ * @return  0=恢复成功, -1=状态不是 FAULT 无法恢复
+ * @note    重新使能 MOE, 清零故障码和计数器, 恢复电流给定, 重置 PID。
+ *          恢复后保持 duty=0.5（50% 占空比）让电机从零开始。
+ *          主循环中检测到 FAULT 状态后延时调用此函数。
+ */
+int32_t FOC_RecoverFromFault(FOC_t *foc)
+{
+    if (foc == NULL) return -1;
+    if (foc->state != FOC_STATE_FAULT) return -1;
+
+    /* 1. 清零故障标志 */
+    foc->fault_code  = FOC_FAULT_NONE;
+    foc->fault_consec = 0U;
+
+    /* 2. 复位 PID */
+    CTL_PID_Reset(&foc->pid_id);
+    CTL_PID_Reset(&foc->pid_iq);
+    CTL_PID_Reset(&foc->pid_speed);
+    CTL_PID_Reset(&foc->pid_pos);
+
+    /* 3. 重新使能 PWM 输出（MOE=1） */
+    SET_BIT(htim1.Instance->BDTR, TIM_BDTR_MOE);
+
+    /* 4. 恢复状态 → RUNNING */
+    foc->state = FOC_STATE_RUNNING;
+
+    /* 5. 同步 setpoint（ISR 中 PID_Update 会用到） */
+    CTL_PID_SetSetpoint(&foc->pid_id, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_iq, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_speed, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_pos, (float)foc->pos_ref);
+
+    return 0;
 }
 
 /*==========================================================================*/

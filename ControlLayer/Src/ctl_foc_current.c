@@ -299,14 +299,24 @@ void FOC_Current_Step(FOC_t   *foc,
 /**
  * @brief   FOC 电流闭环完整周期（ADC 回调中调用）
  * @param   foc  FOC 控制器指针
- * @note    封装: 状态检查 → 读传感器 → Step → 写 PWM → 故障检测。
+ * @note    封装: 状态检查 → 读传感器 → Step → 写 PWM → 故障检测（分级消抖）。
  *          总耗时 ≈ 16µs（32% PWM 周期）。
+ *
+ *          分级故障消抖:
+ *          - 硬故障（过流/过压/欠压）: 连续 5 次 → 立即停机（250µs）
+ *          - 软故障（编码器通信）:   连续 100 次 → 停机（5ms）
+ *          杜邦线接触不良导致偶发 SPI 失败时, 驱动层已做 3 次重试;
+ *          仍未成功则用上一有效角度继续运行, 不触发误停机。
  */
+#define FAULT_DEBOUNCE_HARD  5U    /**< 硬故障消抖次数（5 × 50µs = 250µs） */
+#define FAULT_DEBOUNCE_ENC   100U  /**< 编码器故障消抖次数（100 × 50µs = 5ms） */
+
 void FOC_Current_Run(FOC_t *foc)
 {
     uint16_t  raw_angle;
     float     ia, ib, vbus;
     uint32_t  fault;
+    uint32_t  threshold;
 
     if (foc == NULL) return;
     if (foc->state != FOC_STATE_RUNNING) return;
@@ -317,13 +327,18 @@ void FOC_Current_Run(FOC_t *foc)
     ib        = g_curr_ib;
     vbus      = g_bus_vol;
 
+    /* 编码器读数兜底: 失败时用上一有效角度, 避免传 0 导致磁场角度错误 */
+    if (raw_angle == 0U && drv_as5048a_get_error() != 0U) {
+        raw_angle = foc->raw_angle;
+    }
+
     /* FOC 算法 */
     FOC_Current_Step(foc, raw_angle, ia, ib, vbus);
 
     /* 写 PWM */
     drv_tim_pwm_set_duty_f(foc->duty_a, foc->duty_b, foc->duty_c);
 
-    /* 故障检测 */
+    /* 故障检测（分级消抖: 硬故障 5 次, 编码器 100 次） */
     fault = FOC_FAULT_NONE;
     if (foc->loop_count > 2000U) {
         fault = FOC_CheckFault(foc, 20.0f, 2.5f,
@@ -331,8 +346,24 @@ void FOC_Current_Run(FOC_t *foc)
     }
 
     if (fault != FOC_FAULT_NONE) {
-        foc->fault_code = fault;
-        FOC_EmergencyStop(foc);
-        drv_tim_pwm_moe_off();
+        /* 累计连续故障计数（按故障类型区分） */
+        if (fault == foc->fault_code) {
+            foc->fault_consec++;
+        } else {
+            foc->fault_code  = fault;
+            foc->fault_consec = 1U;
+        }
+
+        /* 按故障类型选阈值: 编码器=100 次(5ms), 硬故障=5 次(250µs) */
+        threshold = (fault == FOC_FAULT_ENCODER)
+                    ? FAULT_DEBOUNCE_ENC : FAULT_DEBOUNCE_HARD;
+
+        if (foc->fault_consec >= threshold) {
+            FOC_EmergencyStop(foc);
+            drv_tim_pwm_moe_off();
+        }
+    } else {
+        /* 无故障 → 清零连续计数器 */
+        foc->fault_consec = 0U;
     }
 }

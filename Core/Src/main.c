@@ -28,17 +28,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include "drv_adc_sampling.h"
-#include "drv_spi_as5048a.h"
-#include "drv_spi_as5048a_debug.h"
-#include "drv_tim_pwm.h"
-#include "ctl_foc_core.h"
-#include "ctl_foc_debug.h"
-#include "ctl_foc_openloop.h"
-#include "ctl_foc_current.h"
-#include "ctl_foc_speed.h"
-#include "ctl_foc_position.h"
+#include "app_foc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,12 +38,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
-/** @brief DRV8313 nFAULT 功能开关: 1=启用, 0=关闭 */
-#define NFAULT_ENABLE  0
-
-/** @brief 位置环自动步进: 1=每500ms转60°, 0=手动拧到新位置保持3秒即锁定 */
-#define POS_AUTO_STEP  1
 
 /* USER CODE END PD */
 
@@ -66,11 +50,6 @@
 
 /* USER CODE BEGIN PV */
 
-#if NFAULT_ENABLE
-/** @brief DRV8313 nFAULT 标志（ISR 置 1，主循环检测并处理） */
-static volatile uint8_t nfault_triggered = 0;
-#endif
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,24 +61,6 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-#if NFAULT_ENABLE
-/**
- * @brief   GPIO EXTI 回调（覆盖 HAL 弱定义）
- * @note    由 EXTI15_10_IRQHandler → HAL_GPIO_EXTI_IRQHandler 链调用。
- *          PB11 (nFAULT) 下降沿触发 → DRV8313 报告故障 → 紧急停机。
- */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-    if (GPIO_Pin == GPIO_EXTI11_nFAULT_Pin) {
-        nfault_triggered = 1;
-        if (g_foc.state >= FOC_STATE_READY) {
-            drv_tim_pwm_moe_off();
-            HAL_GPIO_WritePin(GPIOC, GPIO_Output_EN_Pin, GPIO_PIN_RESET);
-        }
-    }
-}
-#endif
-
 /* USER CODE END 0 */
 
 /**
@@ -110,18 +71,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
-  uint32_t tick_led = 0U;
-  uint32_t tick_prn = 0U;
-  uint32_t tick_now = 0U;
-#if POS_AUTO_STEP
-  uint32_t tick_pos = 0U;
-  float    pos_cmd = 0.0f;
-  int      pos_step = 0;
-#else
-  uint32_t tick_hold = 0U;         /* 手动拧偏后持续偏离的起始时刻 */
-  uint8_t  hold_active = 0;        /* 1=正在计时, 0=未偏离或已复位 */
-#endif
 
   /* USER CODE END 1 */
 
@@ -155,21 +104,8 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
-  /* 位置闭环 */
-  FOC_SystemInit();
-  FOC_Debug_Init();
-#if POS_AUTO_STEP
-  /* 自动步进: 每 0.5s 转 60° */
-  FOC_Position_SetRef(&g_foc, 0U);
-  printf("\r\n=== Position Loop (auto step 60deg/0.5s) ===\r\n\r\n");
-  tick_pos = HAL_GetTick() + 500U;
-#else
-  /* 手动示教: 锁在当前角度, 拧偏保持6秒即更新目标 */
-  FOC_Position_SetRef(&g_foc, g_foc.raw_angle);
-  printf("\r\n=== Position Loop (hold-6s-to-relock) ===\r\n\r\n");
-#endif
-
-  tick_prn = HAL_GetTick() + 1000U;
+  /* 应用层初始化（FOC 系统 + 位置控制模式） */
+  App_Init();
 
   /* USER CODE END 2 */
 
@@ -179,55 +115,12 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* ---- LED 心跳 ---- */
-    tick_now = HAL_GetTick();
-    if (tick_now >= tick_led) {
-      HAL_GPIO_TogglePin(GPIOC, GPIO_Output_LED_Pin);
-      tick_led = tick_now + 1000U;
-    }
+    /* 应用层主循环任务（LED 心跳 + 故障恢复 + 位置控制） */
+    App_Run();
 
     /* USER CODE BEGIN 3 */
 
-    tick_now = HAL_GetTick();
-    if (tick_now >= tick_prn) {
-        FOC_Debug_Print_Compact(&g_foc);
-        tick_prn = tick_now + 20U;
-    }
-
-#if POS_AUTO_STEP
-    /* 自动步进: 每 0.5s 转 60° (2731 LSB), 持续同向旋转 */
-    tick_now = HAL_GetTick();
-    if (tick_now >= tick_pos) {
-        pos_step++;
-        pos_cmd += 2731.0f;
-        CTL_PID_SetSetpoint(&g_foc.pid_pos, pos_cmd);
-        printf("\r\n--- Step %d: pos=%.0f LSB (%.0f deg) ---\r\n\r\n",
-               pos_step, (double)pos_cmd, (double)(pos_step * 60.0f));
-        tick_pos = tick_now + 500U;
-    }
-#else
-    /* 手动示教: 拧偏超过 500 LSB (~11°) 并保持 6 秒 → 锁定新位置 */
-    tick_now = HAL_GetTick();
-    {
-        float sp  = g_foc.pid_pos.setpoint;
-        float fb  = g_foc.unwrapped_pos;
-        float err = sp - fb;
-        if (err < 0.0f) err = -err;
-        if (err > 500.0f) {
-            if (!hold_active) {
-                hold_active = 1;
-                tick_hold   = tick_now;
-            } else if (tick_now - tick_hold >= 6000U) {
-                CTL_PID_SetSetpoint(&g_foc.pid_pos, fb);
-                printf("\r\n--- Hold 6s: locked at %.0f LSB ---\r\n\r\n", (double)fb);
-                hold_active = 0;
-            }
-        } else {
-            hold_active = 0;
-        }
-    }
-#endif
-
+    /* USER CODE END 3 */
   }
   /* USER CODE END 3 */
 }

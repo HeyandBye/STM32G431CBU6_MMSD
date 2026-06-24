@@ -97,8 +97,12 @@ typedef struct {
     /* ---- 诊断 ---- */
     uint32_t      loop_count;  /**< 控制周期计数（溢出自动回绕）         */
     uint32_t      fault_code;  /**< 故障码（0=无故障，见 FOC_FAULT_*）  */
+    uint32_t      fault_consec;/**< 连续故障计数（消抖：N 次才触发）     */
     float         speed_rpm;   /**< 机械转速 (RPM), TIM6 ISR 内 1kHz 更新 */
     float         theta_prev;  /**< 上一周期电角度, 转速计算用            */
+
+    /* ---- 阻尼模式 ---- */
+    float         damper_gain; /**< 阻尼增益 (A/RPM), 仅 FOC_MODE_DAMPER  */
 
     /* ---- 速度环 ---- */
     CTL_PID_t     pid_speed;   /**< 速度 PID 控制器                      */
@@ -132,6 +136,7 @@ typedef struct {
 #define FOC_MODE_CURRENT   2  /**< 电流闭环（Id=0，需要编码器校准）        */
 #define FOC_MODE_SPEED     3  /**< 速度闭环（电流内环 + 速度外环）         */
 #define FOC_MODE_POSITION  4  /**< 位置闭环（电流内环 + 位置外环）         */
+#define FOC_MODE_DAMPER    5  /**< 阻尼模式（转动有阻力, 停手即锁定）       */
 
 /** @brief 当前活跃的 FOC 模式（编译期常量，修改此处切换模式） */
 #define FOC_MODE  FOC_MODE_POSITION
@@ -178,6 +183,15 @@ void FOC_SetMotorParams(FOC_t   *foc,
  * @note    占空比归 50%, PID 清零。复位需重新执行完整初始化链。
  */
 void FOC_EmergencyStop(FOC_t *foc);
+
+/**
+ * @brief   尝试从故障中恢复（FAULT → READY → RUNNING）
+ * @param   foc  FOC 控制器指针
+ * @return  0=恢复成功, -1=恢复失败
+ * @note    重新使能 MOE, 清零故障码, 恢复电流给定, 重置 PID。
+ *          主循环中检测到 FAULT 状态后延时调用此函数。
+ */
+int32_t FOC_RecoverFromFault(FOC_t *foc);
 
 /* ---- 查询 ---- */
 

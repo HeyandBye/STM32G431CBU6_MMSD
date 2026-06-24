@@ -11,6 +11,7 @@
 #include "ctl_foc_speed.h"
 #include "ctl_foc_current.h"
 #include "ctl_foc_position.h"
+#include "ctl_foc_damper.h"
 #include "ctl_pid.h"
 #include "tim.h"
 #include <stddef.h>
@@ -26,6 +27,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         FOC_Speed_Run(&g_foc);
 #elif FOC_MODE == FOC_MODE_POSITION
         FOC_Speed_Run(&g_foc);
+#elif FOC_MODE == FOC_MODE_DAMPER
+        FOC_Damper_Run(&g_foc);
 #endif
     }
     if (htim->Instance == TIM7) {

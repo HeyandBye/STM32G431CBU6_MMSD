@@ -68,11 +68,20 @@ void FOC_Position_Run(FOC_t *foc)
     foc->unwrapped_pos += raw_delta;
     foc->raw_prev = (uint16_t)raw_now;
 
-    /* 回绕到 setpoint ±8192 范围内, 保持最短路径误差且不无限增长 */
+    /* 回绕到 setpoint ±8192 范围内（同时平移 setpoint 保持误差不变）
+     * 只平移 unwrapped_pos 会导致 PID 误差符号翻转（越过 180° 时电机助力而非抵抗）。
+     * 同步平移 setpoint 后: error = (sp-Δ) - (fb-Δ) = sp-fb, 误差完全不变。
+     * 位置环 Kr=1.0, 因此 prop_term = Kp*(Kr*sp - fb) 也保持不变。 */
     sp   = foc->pid_pos.setpoint;
     diff = foc->unwrapped_pos - sp;
-    if (diff >  8192.0f) foc->unwrapped_pos -= 16384.0f;
-    if (diff < -8192.0f) foc->unwrapped_pos += 16384.0f;
+    if (diff >  8192.0f) {
+        foc->unwrapped_pos    -= 16384.0f;
+        foc->pid_pos.setpoint -= 16384.0f;
+    }
+    if (diff < -8192.0f) {
+        foc->unwrapped_pos    += 16384.0f;
+        foc->pid_pos.setpoint += 16384.0f;
+    }
 
     /* 位置 PI: 输入展开后的无回绕位置, 输出 RPM 指令 */
     speed_cmd = CTL_PID_Update(&foc->pid_pos, foc->unwrapped_pos);

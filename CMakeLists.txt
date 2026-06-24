@@ -42,6 +42,8 @@ add_executable(${CMAKE_PROJECT_NAME}
     DriverLayer/Inc/drv_tim_pwm.h
     DriverLayer/Inc/drv_spi_as5048a_debug.h
     DriverLayer/Src/drv_spi_as5048a_debug.c
+    DriverLayer/Inc/drv_nfault.h
+    DriverLayer/Src/drv_nfault.c
     ControlLayer/Inc/ctl_math.h
     ControlLayer/Src/ctl_math.c
     ControlLayer/Inc/ctl_pid.h
@@ -57,7 +59,11 @@ add_executable(${CMAKE_PROJECT_NAME}
     ControlLayer/Inc/ctl_foc_speed.h
     ControlLayer/Src/ctl_foc_speed.c
     ControlLayer/Inc/ctl_foc_position.h
-    ControlLayer/Src/ctl_foc_position.c)
+    ControlLayer/Src/ctl_foc_position.c
+    ControlLayer/Inc/ctl_foc_damper.h
+    ControlLayer/Src/ctl_foc_damper.c
+    ApplicationLayer/Inc/app_foc.h
+    ApplicationLayer/Src/app_foc.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)

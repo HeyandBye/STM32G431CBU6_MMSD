@@ -271,11 +271,18 @@ void drv_as5048a_write_reg(uint16_t reg_addr, uint16_t value)
  */
 uint16_t drv_as5048a_read_angle(void)
 {
-    uint16_t val = drv_as5048a_read_reg(CMD_ANGLE);
-    if (as5048a_error_flag != 0U) {
-        return 0U;
+    uint16_t val;
+    int      retry;
+
+    /* 自动重试最多 3 次, 应对杜邦线接触不良导致的偶发 SPI 失败 */
+    for (retry = 0; retry < 3; retry++) {
+        val = drv_as5048a_read_reg(CMD_ANGLE);
+        if (as5048a_error_flag == 0U) {
+            return val;
+        }
     }
-    return val;
+    /* 3 次均失败, 返回 0（上层用上一有效角度兜底） */
+    return 0U;
 }
 
 /**
