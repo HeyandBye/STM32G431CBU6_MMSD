@@ -35,7 +35,7 @@
 - **手动示教模式** — 手动拧到目标位置，保持 6 秒后锁定
 - **阻尼模式** — 转动时有阻力，松手即自由停止
 
-工程代码采用清晰的**四层架构**（驱动层 → 控制层 → 应用层），各层解耦、接口统一，便于维护和移植。
+工程代码采用清晰的**三层架构**（驱动层 → 控制层 → 应用层），各层解耦、接口统一，便于维护和移植。
 
 ---
 
@@ -74,9 +74,10 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ TIM1 (20kHz / 50µs)  →  触发 ADC1 → 电流采样 + FOC 算法  │
-│   ├── ADC1 转换:     ~6µs                                  │
-│   ├── SPI 读编码器:  ~10µs                                 │
-│   └── FOC 算法:      ~16µs  (Clarke→Park→PI→InvPark→SVPWM) │
+│   ├── ADC1 硬件转换:  ~6µs (与 CPU 并行)                     │
+│   ├── ADC 回调总耗时: ~16µs (32% PWM 周期)                  │
+│   │   ├── SPI 读编码器:   ~10µs                              │
+│   │   └── FOC 算法:      ~4.8µs (Clarke→Park→PI→InvPark→SVPWM)│
 ├─────────────────────────────────────────────────────────┤
 │ TIM6 (1kHz / 1ms)     →  速度环 PI  →  更新 Iq 给定       │
 ├─────────────────────────────────────────────────────────┤
@@ -90,11 +91,15 @@
 
 ## 软件分层
 
-项目采用清晰的**四层架构**，从底向上依次为：
+项目采用清晰的**三层架构**，从底向上依次为：
+
+> Core/ 和 Drivers/ 目录下为 STM32CubeMX 生成的 HAL 初始化代码和 ST 官方驱动库，属于工具链基础设施，不作为项目手写层。
 
 ### 1️⃣ 驱动层 (DriverLayer)
 
-直接操作 MCU 外设寄存器，提供最底层的硬件抽象。
+封装外设的具体操作逻辑，提供统一的上层接口。以直接寄存器操作为主，必要时混合 HAL 调用。
+
+> SPI 编码器驱动完全直接操作 `SPI1->DR/SR/CR1` 寄存器；PWM 驱动写 CCR 和 BDTR 用寄存器、通道使能用 HAL；ADC 和 nFAULT 驱动主要基于 HAL 回调。
 
 | 模块 | 文件 | 功能 |
 |------|------|------|
@@ -128,17 +133,6 @@
 | 应用初始化 | `app_foc` | `App_Init()` — FOC 系统初始化 + 模式分发 |
 | 主循环任务 | `app_foc` | `App_Run()` — LED 心跳 + 故障恢复 + 位置控制 |
 
-### 4️⃣ 硬件抽象层 (Core / Drivers)
-
-STM32CubeMX 生成的 HAL 驱动和硬件初始化代码。
-
-| 模块 | 功能 |
-|------|------|
-| Core/Inc | 外设头文件 (adc, dma, fdcan, gpio, spi, tim, usart) |
-| Core/Src | 外设初始化代码 + main.c + 中断处理 |
-| Drivers/CMSIS | ARM Cortex-M4 CMSIS 核心 |
-| Drivers/STM32G4xx_HAL | STM32G4 HAL 驱动库 |
-
 ---
 
 ## 控制方案
@@ -148,7 +142,7 @@ STM32CubeMX 生成的 HAL 驱动和硬件初始化代码。
 ```mermaid
 flowchart LR
     POS["位置环<br/>100Hz<br/>Kp=0.10, Ki=0"] -->|Speed_ref| SPD["速度环<br/>1kHz<br/>Kp=0.002, Ki=0.001"]
-    SPD -->|Iq_ref| CUR["电流环<br/>20kHz<br/>Kp=4.0, Ki=0.3"]
+    SPD -->|Iq_ref| CUR["电流环<br/>20kHz<br/>Kp=2.0~4.0, Ki=0.1~0.3"]
     CUR -->|Vd,Vq| SVPWM["SVPWM 七段式"]
     SVPWM -->|duty_a/b/c| MOTOR["iPower GM3506"]
     ENC["AS5048A<br/>14-bit"] -->|raw_angle| POS
@@ -161,22 +155,25 @@ flowchart LR
 - 策略: **Id=0**（最大化转矩电流比）
 - 控制周期: **50µs**
 - 算法流程: 读 ADC → 读编码器 → Clarke 变换 → Park 变换 → **双 PI (Id/Iq)** → InvPark → SVPWM
-- PI 参数: **Kp=4.0, Ki=0.3**，限幅 ±12V
-- 电流滤波: **IIR α=0.3** (截止频率 ~955Hz)
+- PI 参数: **Kp=2.0~4.0, Ki=0.1~0.3**，限幅 ±Vbus
+  - 电流/速度模式: Kp=4.0, Ki=0.3
+  - **位置模式**: Kp=2.0, Ki=0.1（降低 ADC 噪声放大，静止时不振荡）
+- 电流滤波: **IIR α=0.3** (截止频率 ~1.1kHz @ 20kHz 采样)
 
 ### 速度环 (1kHz, TIM6)
 
 - 测速方式: 编码器电角度差分，回绕检测
 - 控制周期: **1ms**
 - 输出限幅: ±1A（钳位到 Iq_ref）
+- 转速硬限幅: **±2000 RPM**
 - PI 参数: **Kp=0.002, Ki=0.001**
 
 ### 位置环 (100Hz, TIM7)
 
-- 编码器展开: 无回绕累计，每步检测 ±8192 跳变
+- 编码器展开: 两步法 — ① delta 检测 ±8192 回绕方向，累计无回绕位置 ② 定期回绕到 setpoint ±8192，防 float32 精度退化
 - 控制周期: **10ms**
 - 输出限幅: ±500RPM（钳位到 speed_ref）
-- PI 参数: **Kp=0.10, Ki=0** (纯 P 控制)
+- PID 参数: **Kp=0.10, Ki=0, Kd=0.03**（含微分项增强阻尼，抑制超调）
 
 ---
 
@@ -186,7 +183,7 @@ flowchart LR
 
 **宏开关**: `POS_AUTO_STEP = 1`
 
-- 每 **1 秒** 步进 **2731 LSB**（≈ 60° 机械角）
+- 每 **1 秒** 步进 **273 LSB**（≈ 6° 机械角）
 - 位置环锁定目标角度，速度环/电流环跟随
 - 适合：基础功能演示、控制效果评估
 
@@ -205,7 +202,7 @@ flowchart LR
 
 - 转动产生阻力（`Iq = -gain × speed`），无积分项
 - 转动越快阻力越大，松手即自由停止
-- 参数：默认阻尼增益 **0.03~0.1 A/RPM**
+- 参数：默认阻尼增益 **0.02 A/RPM**（可配置范围 0.02~0.1 A/RPM）
 - 适合：测功机模拟、手感调试
 
 ### 4️⃣ 开环验证模式
@@ -359,26 +356,35 @@ STM32_Programmer_CLI --connect port=SWD --write build/Debug/STM32G431CBU6_MMSD.h
 - 波特率: **115200-8-N-1**
 - 输出格式: **CSV**，每列以逗号分隔
 - 启用: `#define DEBUG_PRINT 1` (在 `app_foc.h` 中)
-- 输出示例:
+- `App_Run()` 中每 **20ms** 调用 `FOC_Debug_Print_Compact` 输出精简调试数据，输出示例:
 
 ```
-tick,state,loop,Id_ref,Id,Iq_ref,Iq,Vd,Vq,theta,Ia,Ib,Vbus,duty_a,duty_b,duty_c,fault
-1000, 2,   123, 0.00, 0.01, 0.50, 0.49, 2.3, 4.1, 12.5, 0.01, 0.02, 12.0, 0.42, 0.50, 0.38, 0
+  tick   Id       Iq       Vd      Vq      rpm   theta
+  1000  +0.0100  +0.4900  +2.300  +4.100  120.5   12.50
+```
+
+- 完整调试输出（通过 `FOC_Debug_Print` 调用，建议 500ms 间隔）:
+
+```
+tick_ms,state,loop,enc_raw,adc_ia_raw,adc_ib_raw,adc_vbus_raw,adc_bus_cur_raw,Ia,Ib,bus_cur,Id_ref,Id,Iq_ref,Iq,Vd,Vq,theta,sin_theta,cos_theta,Vbus,duty_a,duty_b,duty_c,fault
+1000,2,123,12500,2050,2048,1625,2048,0.0100,0.0200,0.000,0.00,0.01,0.50,0.49,2.300,4.100,12.50,0.985,0.173,12.00,0.420,0.500,0.380,0x00000000
 ```
 
 ### 故障代码
 
 | 故障码 | 含义 | 处理 |
 |--------|------|------|
-| `FOC_FAULT_OVERCURRENT` | 相电流超过限幅 | 紧急关断 MOE |
-| `FOC_FAULT_OVERVOLTAGE` | 母线电压过高 | 紧急关断 MOE |
-| `FOC_FAULT_ENCODER` | 编码器通信异常 | 标记故障，等待恢复 |
+| `FOC_FAULT_OVERCURRENT` | 相电流超过 2.5A 限幅 | 紧急关断 MOE（消抖 5 次 × 50µs = 250µs） |
+| `FOC_FAULT_OVERVOLTAGE` | 母线电压超过 20V | 紧急关断 MOE |
+| `FOC_FAULT_UNDERVOLTAGE` | 母线电压低于 0.5V（无法正常调制） | 紧急关断 MOE |
+| `FOC_FAULT_ENCODER` | 编码器通信异常（SPI 失败） | 标记故障，消抖 100 次（5ms）后停机 |
 | `DRV8313_nFAULT` | 驱动芯片报告过流/过热/欠压 | 关断 MOE + EN 引脚 |
 
 ### 故障自动恢复
 
 - 启用后延时 **500ms** 自动尝试恢复
-- 连续故障 N 次后永久关断，需重新上电
+- 恢复顺序: 清零故障码 → 复位所有 PID → 重新使能 MOE → 恢复 RUNNING 状态
+- 分级故障消抖: 硬故障（过流/过压/欠压）5 次连续触发，编码器故障 100 次连续触发
 
 ---
 
@@ -391,8 +397,9 @@ tick,state,loop,Id_ref,Id,Iq_ref,Iq,Vd,Vq,theta,Ia,Ib,Vbus,duty_a,duty_b,duty_c,
 | 2026-06-19 | ADC + PWM 联合时序验证，~6µs 转换 |
 | 2026-06-22 | 采样+PWM 驱动全部验证通过 |
 | 2026-06-23 | AS5048A 编码器驱动完成，~10µs 读取 |
-| 2026-06-24 | 三环串级 FOC 控制完成，~33µs 电流环 |
+| 2026-06-24 | 三环串级 FOC 控制完成，~16µs 电流环（含 ADC+SPI） |
 | 2026-06-25 | 自动步进、手动示教、阻尼模式全部实现 |
+| 2026-06-25 | README 文档修正：步进量 273LSB(6°)、位置环 Kd、电流环分模式描述等 |
 
 ---
 
