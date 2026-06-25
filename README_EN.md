@@ -1,0 +1,415 @@
+# STM32G431CBU6_MMSD — BLDC Motor FOC Vector Control Project
+
+> **MCU**: STM32G431CBU6 (Cortex-M4 @ 170MHz)  
+> **Driver**: DRV8313 Three-Phase MOSFET Pre-Driver  
+> **Encoder**: AS5048A 14-bit Magnetic Rotary Encoder (SPI)  
+> **Current Sense**: TMCS1107A3B (200mV/A, bidirectional)  
+> **Target Motor**: iPower GM3506 Gimbal BLDC Motor (24N22P, 11 pole pairs)  
+> **Dev Environment**: STM32CubeMX + VS Code + CMake + ARM GCC
+
+> **[🇨🇳 查看中文版](README.md)**
+
+---
+
+## Table of Contents
+
+- [Project Overview](#project-overview)
+- [Hardware Architecture](#hardware-architecture)
+- [Software Layers](#software-layers)
+- [Control Scheme](#control-scheme)
+- [Operating Modes](#operating-modes)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Tuning Guide](#tuning-guide)
+- [Debug Interface](#debug-interface)
+- [Project Log](#project-log)
+
+---
+
+## Project Overview
+
+This project is a **Field-Oriented Control (FOC)** system for **Brushless DC (BLDC) motors** based on the **STM32G431CBU6** microcontroller, targeting the **iPower GM3506 gimbal motor**.
+
+It adopts a **three-loop cascaded control** architecture (Position → Speed → Current), supporting:
+
+- **Auto Step Mode** — automatically rotates 6° every 1 second, for demo and basic testing
+- **Manual Teach Mode** — manually turn to a target position, hold for 6 seconds to lock
+- **Damper Mode** — resistive feeling when turning, free stop when released
+
+The code follows a clean **four-layer architecture** (Driver → Control → Application), with decoupled layers and unified interfaces for easy maintenance and porting.
+
+---
+
+## Hardware Architecture
+
+### Component List
+
+| Component | Model | Description |
+|-----------|-------|-------------|
+| MCU | STM32G431CBU6 | Cortex-M4, 170MHz, FPU, DSP instructions |
+| Motor Driver | DRV8313 | Three-Phase MOSFET Pre-Driver, with nFAULT protection |
+| Magnetic Encoder | AS5048A | 14-bit (0~16383), SPI interface |
+| Current Sensor | TMCS1107A3B | 200mV/A, zero current = 1.65V |
+| Target Motor | iPower GM3506 | 24N22P, 11 pole pairs, 5.6Ω, 1A@12V |
+
+### Pin Mapping
+
+| Function | Pin | Peripheral |
+|----------|-----|------------|
+| PWM Phase A High | PA8 | TIM1_CH1 |
+| PWM Phase B High | PA9 | TIM1_CH2 |
+| PWM Phase C High | PA10 | TIM1_CH3 |
+| Phase Current Ia | PA0 | ADC1_IN1 |
+| Phase Current Ib | PA1 | ADC1_IN2 |
+| Bus Voltage | PA7 | ADC2_IN4 |
+| Bus Current | PA6 | ADC2_IN3 |
+| Encoder SCK | PB3 | SPI1_SCK |
+| Encoder MISO | PB4 | SPI1_MISO |
+| Encoder MOSI | PB5 | SPI1_MOSI |
+| Encoder CS | PA15 | GPIO software chip select |
+| nFAULT Interrupt | PB11 | EXTI falling edge trigger |
+| LED Indicator | PC6 | GPIO output |
+
+### Timing Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ TIM1 (20kHz / 50µs)  →  Trigger ADC1 → Current Sampling │
+│                           + FOC Algorithm                 │
+│   ├── ADC1 Conversion:    ~6µs                            │
+│   ├── SPI Read Encoder:   ~10µs                           │
+│   └── FOC Algorithm:      ~16µs (Clarke→Park→PI→InvPark) │
+│                              →SVPWM                        │
+├─────────────────────────────────────────────────────────┤
+│ TIM6 (1kHz / 1ms)     →  Speed PI  →  Update Iq Ref      │
+├─────────────────────────────────────────────────────────┤
+│ TIM7 (100Hz / 10ms)   →  Position PI →  Update Speed Ref │
+├─────────────────────────────────────────────────────────┤
+│ main loop              →  LED Heartbeat + Fault Recovery  │
+│                           + Mode Management                │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Software Layers
+
+The project adopts a **four-layer architecture**, from bottom to top:
+
+### 1️⃣ Driver Layer
+
+Directly operates MCU peripheral registers, providing the lowest-level hardware abstraction.
+
+| Module | File | Description |
+|--------|------|-------------|
+| ADC Sampling | `drv_adc_sampling` | ADC1/ADC2 dual-channel DMA circular sampling, current/voltage detection |
+| SPI Encoder | `drv_spi_as5048a` | AS5048A 14-bit magnetic encoder SPI driver |
+| PWM Output | `drv_tim_pwm` | TIM1 six-channel complementary PWM, 20kHz, configurable dead-time |
+| nFAULT Protection | `drv_nfault` | DRV8313 fault interrupt handling, emergency MOE shutdown |
+
+### 2️⃣ Control Layer
+
+Core FOC algorithm and math library, independent of HAL, testable in isolation.
+
+| Module | File | Description |
+|--------|------|-------------|
+| Math Library | `ctl_math` | Clarke/Park/InvPark transforms + 7-segment SVPWM |
+| PID Controller | `ctl_pid` | Parallel PID, setpoint weighting, conditional integral anti-windup, derivative low-pass filter |
+| FOC Core | `ctl_foc_core` | FOC main struct, state machine, system init, fault detection |
+| Open-Loop Control | `ctl_foc_openloop` | Virtual rotating field, sensorless/no PI, for hardware verification |
+| Current Loop | `ctl_foc_current` | Id=0 strategy, PI control, encoder calibration |
+| Speed Loop | `ctl_foc_speed` | Speed PI controller, differential speed measurement |
+| Position Loop | `ctl_foc_position` | Position PI controller, encoder unwrapping (no rollover) |
+| Damper Mode | `ctl_foc_damper` | Resistive turning mode, Iq=-gain×speed, pure proportional negative feedback |
+| Debug Output | `ctl_foc_debug` | USART1 CSV format printing, plottable with Excel/Python |
+
+### 3️⃣ Application Layer
+
+Encapsulates business logic; `main.c` only retains the hardware initialization skeleton.
+
+| Module | File | Description |
+|--------|------|-------------|
+| App Init | `app_foc` | `App_Init()` — FOC system init + mode dispatch |
+| Main Loop Task | `app_foc` | `App_Run()` — LED heartbeat + fault recovery + position control |
+
+### 4️⃣ Hardware Abstraction Layer (Core / Drivers)
+
+HAL drivers and hardware initialization code generated by STM32CubeMX.
+
+| Module | Description |
+|--------|-------------|
+| Core/Inc | Peripheral headers (adc, dma, fdcan, gpio, spi, tim, usart) |
+| Core/Src | Peripheral init code + main.c + interrupt handlers |
+| Drivers/CMSIS | ARM Cortex-M4 CMSIS core |
+| Drivers/STM32G4xx_HAL | STM32G4 HAL driver library |
+
+---
+
+## Control Scheme
+
+### Three-Loop Cascaded Control
+
+```mermaid
+flowchart LR
+    POS["Position Loop<br/>100Hz<br/>Kp=0.10, Ki=0"] -->|Speed_ref| SPD["Speed Loop<br/>1kHz<br/>Kp=0.002, Ki=0.001"]
+    SPD -->|Iq_ref| CUR["Current Loop<br/>20kHz<br/>Kp=4.0, Ki=0.3"]
+    CUR -->|Vd,Vq| SVPWM["7-segment SVPWM"]
+    SVPWM -->|duty_a/b/c| MOTOR["iPower GM3506"]
+    ENC["AS5048A<br/>14-bit"] -->|raw_angle| POS
+    ENC -->|Δθ| SPD
+    ADC["TMCS1107A3B"] -->|Ia,Ib| CUR
+```
+
+### Current Loop (20kHz, TIM1)
+
+- Strategy: **Id=0** (maximum torque per ampere)
+- Control period: **50µs**
+- Algorithm flow: Read ADC → Read Encoder → Clarke Transform → Park Transform → **Dual PI (Id/Iq)** → InvPark → SVPWM
+- PI gains: **Kp=4.0, Ki=0.3**, clamp ±12V
+- Current filtering: **IIR α=0.3** (cutoff ~955Hz)
+
+### Speed Loop (1kHz, TIM6)
+
+- Speed measurement: Encoder electrical angle differential with rollover detection
+- Control period: **1ms**
+- Output clamp: ±1A (clamped to Iq_ref)
+- PI gains: **Kp=0.002, Ki=0.001**
+
+### Position Loop (100Hz, TIM7)
+
+- Encoder unwrapping: Cumulative without rollover, detects ±8192 jumps per step
+- Control period: **10ms**
+- Output clamp: ±500RPM (clamped to speed_ref)
+- PI gains: **Kp=0.10, Ki=0** (pure P control)
+
+---
+
+## Operating Modes
+
+### 1️⃣ Position Control — Auto Step Mode
+
+**Macro**: `POS_AUTO_STEP = 1`
+
+- Steps **2731 LSB** (≈ 60° mechanical) every **1 second**
+- Position loop locks target angle, speed/current loops follow
+- Use case: Basic demo, control performance evaluation
+
+### 2️⃣ Position Control — Manual Teach Mode
+
+**Macro**: `POS_AUTO_STEP = 0`
+
+- Manually rotate the motor away from current position
+- After deviation **>500 LSB**, hold for **6 seconds** to lock as new target
+- Release → position loop returns to locked position
+- Use case: Mechanical assembly calibration, position teaching
+
+### 3️⃣ Damper Mode
+
+**Macro**: `FOC_MODE = FOC_MODE_DAMPER`
+
+- Turning generates resistance (`Iq = -gain × speed`), no integral term
+- Faster turning = stronger resistance; release = free stop
+- Parameter: Default damping gain **0.03~0.1 A/RPM**
+- Use case: Dynamometer simulation, haptic tuning
+
+### 4️⃣ Open-Loop Verification Mode
+
+For hardware chain verification and first motor spin test, independent of encoder feedback and PI gains.
+
+- Software generates virtual rotating field
+- No encoder calibration needed
+- Sensorless; may lose sync under load
+
+---
+
+## Project Structure
+
+```
+STM32G431CBU6_MMSD/
+├── CMakeLists.txt              # CMake build file
+├── CMakePresets.json           # CMake presets (Debug/Release)
+├── startup_stm32g431xx.s       # Startup file
+├── STM32G431XX_FLASH.ld        # Linker script
+├── STM32G431CBU6_MMSD.ioc      # STM32CubeMX configuration
+│
+├── ApplicationLayer/           # Application layer
+│   ├── Inc/app_foc.h
+│   └── Src/app_foc.c
+│
+├── ControlLayer/               # Control layer (FOC algorithm core)
+│   ├── Inc/                    # Headers
+│   │   ├── ctl_math.h          #   Coordinate transforms & SVPWM
+│   │   ├── ctl_pid.h           #   PI/PID controller
+│   │   ├── ctl_foc_core.h      #   FOC infrastructure
+│   │   ├── ctl_foc_current.h   #   Current loop
+│   │   ├── ctl_foc_speed.h     #   Speed loop
+│   │   ├── ctl_foc_position.h  #   Position loop
+│   │   ├── ctl_foc_openloop.h  #   Open-loop control
+│   │   ├── ctl_foc_damper.h    #   Damper mode
+│   │   └── ctl_foc_debug.h     #   Debug output
+│   └── Src/                    # Source files (same name .c)
+│
+├── DriverLayer/                # Driver layer
+│   ├── Inc/
+│   │   ├── drv_adc_sampling.h  #   ADC current/voltage sampling
+│   │   ├── drv_spi_as5048a.h   #   AS5048A encoder
+│   │   ├── drv_tim_pwm.h       #   TIM1 PWM output
+│   │   ├── drv_nfault.h        #   DRV8313 fault protection
+│   │   └── drv_spi_as5048a_debug.h
+│   └── Src/                    # Source files
+│
+├── Core/                       # STM32CubeMX generated
+│   ├── Inc/                    # Peripheral headers + main.h
+│   └── Src/                    # Peripheral init + main.c + interrupts
+│
+├── Drivers/                    # CMSIS + STM32G4 HAL library
+│
+├── cmake/                      # CMake toolchain
+│   ├── gcc-arm-none-eabi.cmake
+│   ├── starm-clang.cmake
+│   └── stm32cubemx/            # CubeMX generated CMake
+│
+└── document/                   # Documentation
+    ├── 编程日志.txt
+    ├── FOC_项目深度复盘.md
+    └── FOC_项目总结与面试准备.md
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **VS Code** (recommended) or STM32CubeIDE
+- **ARM GCC toolchain** (`arm-none-eabi-gcc`)
+- **CMake** ≥ 3.22
+- **STM32CubeMX** (for regenerating init code)
+- **Serial terminal** 115200-8-N-1 (for debug output)
+
+### Build
+
+```bash
+# Debug mode
+cmake --preset debug
+cmake --build build/Debug
+
+# Release mode
+cmake --preset release
+cmake --build build/Release
+```
+
+### Flash
+
+Use ST-Link tools:
+
+```bash
+# Using STM32_Programmer_CLI
+STM32_Programmer_CLI --connect port=SWD --write build/Debug/STM32G431CBU6_MMSD.hex --verify
+```
+
+Or flash via VS Code + Cortex-Debug extension.
+
+### Run
+
+1. Connect the motor (iPower GM3506) to DRV8313 outputs
+2. Connect 12V power to the driver board
+3. On power-up, the program auto-initializes the FOC system
+4. LED (PC6) blinks at **1Hz** indicating normal operation
+5. Motor runs in the current mode (Auto Step / Manual Teach / Damper)
+
+---
+
+## Tuning Guide
+
+### Current Loop PI Gains
+
+| Parameter | Recommended | Description |
+|-----------|-------------|-------------|
+| Kp (Id/Iq) | 2.0~6.0 | Proportional gain: higher = faster response, too high → oscillation |
+| Ki (Id/Iq) | 0.1~0.5 | Integral gain: eliminates steady-state error, too high → low-freq oscillation |
+| Output clamp | ±Vbus | Set to bus voltage |
+| Integral clamp | ±Vbus×0.3 | Anti-windup, prevents deep integral saturation |
+
+**Tuning steps**:
+1. After correct encoder calibration, lock the motor shaft (or attach high-inertia load)
+2. Set Ki=0, increase Kp until current response shows critical oscillation
+3. Use **60%~80%** of critical Kp as final Kp
+4. Add Ki ≈ Kp × 0.05~0.1
+5. Observe Id/Iq tracking with oscilloscope or serial output
+
+### Speed Loop PI Gains
+
+| Parameter | Recommended | Description |
+|-----------|-------------|-------------|
+| Kp | 0.001~0.005 | Proportional gain: controls speed response |
+| Ki | 0.0005~0.002 | Integral gain: eliminates speed steady-state error |
+| Output clamp | ±1.0A | Clamped to current loop Iq_ref |
+
+### Position Loop PI Gains
+
+| Parameter | Recommended | Description |
+|-----------|-------------|-------------|
+| Kp | 0.05~0.20 | Proportional gain: controls position stiffness |
+| Ki | 0 (pure P) | Position loop typically needs no integral |
+| Output clamp | ±500RPM | Clamped to speed loop speed_ref |
+
+---
+
+## Debug Interface
+
+### Serial Output (USART1)
+
+- Baud rate: **115200-8-N-1**
+- Format: **CSV**, columns separated by commas
+- Enable: `#define DEBUG_PRINT 1` (in `app_foc.h`)
+- Example output:
+
+```
+tick,state,loop,Id_ref,Id,Iq_ref,Iq,Vd,Vq,theta,Ia,Ib,Vbus,duty_a,duty_b,duty_c,fault
+1000, 2,   123, 0.00, 0.01, 0.50, 0.49, 2.3, 4.1, 12.5, 0.01, 0.02, 12.0, 0.42, 0.50, 0.38, 0
+```
+
+### Fault Codes
+
+| Fault Code | Meaning | Action |
+|------------|---------|--------|
+| `FOC_FAULT_OVERCURRENT` | Phase current exceeds limit | Emergency MOE shutdown |
+| `FOC_FAULT_OVERVOLTAGE` | Bus voltage too high | Emergency MOE shutdown |
+| `FOC_FAULT_ENCODER` | Encoder communication error | Flag fault, wait for recovery |
+| `DRV8313_nFAULT` | Driver IC reports overcurrent/overtemp/undervoltage | Shutdown MOE + EN pin |
+
+### Auto-Recovery
+
+- **500ms** delay before auto-recovery attempt
+- Permanent shutdown after N consecutive faults, requires power cycle
+
+---
+
+## Project Log
+
+| Date | Milestone |
+|------|-----------|
+| 2026-06-17 | ADC sampling driver completed (TMCS1107A3B) |
+| 2026-06-18 | TIM1 PWM driver completed (20kHz) |
+| 2026-06-19 | ADC + PWM timing verified, ~6µs conversion |
+| 2026-06-22 | Sampling + PWM drivers fully verified |
+| 2026-06-23 | AS5048A encoder driver completed, ~10µs read |
+| 2026-06-24 | Three-loop cascaded FOC control completed, ~33µs current loop |
+| 2026-06-25 | Auto step, manual teach, damper modes all implemented |
+
+---
+
+## References
+
+- [STM32G4 Reference Manual (RM0440)](https://www.st.com/resource/en/reference_manual/dm00463896.pdf)
+- [DRV8313 Datasheet](https://www.ti.com/lit/ds/symlink/drv8313.pdf)
+- [AS5048A Datasheet](https://ams.com/documents/20143/36005/AS5048A_DS000744.pdf)
+- [iPower GM3506 Motor Specs](document/iPower%20GM3506%20Gimbal%20Motor%20with%20Encoder%20Specifications.txt)
+- [FOC Project Deep Review (Chinese)](document/FOC_项目深度复盘.md)
+- [Chinese Version of This README](README.md)
+
+---
+
+> **Maintainer**: lidongyang  
+> **License**: For reference and learning only. Not authorized for commercial use without permission.
