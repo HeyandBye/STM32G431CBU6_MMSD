@@ -76,11 +76,14 @@ The code follows a clean **three-layer architecture** (Driver → Control → Ap
 ┌─────────────────────────────────────────────────────────┐
 │ TIM1 (20kHz / 50µs)  →  Trigger ADC1 → Current Sampling │
 │                           + FOC Algorithm                 │
-│   ├── ADC1 HW Conversion: ~6µs (parallel with CPU)        │
-│   ├── ADC Callback Total: ~16µs (32% PWM period)          │
-│   │   ├── SPI Read Encoder:  ~10µs                         │
-│   │   └── FOC Algorithm:     ~4.8µs (Clarke→Park→PI→InvPark│
-│   │                            →SVPWM)                     │
+│   ├── ADC1 HW Conversion:        ~6µs                      │
+│   ├── ADC Callback Execution:    ~16µs                     │
+│   │   ├── SPI Read Encoder:       ~10µs                     │
+│   │   ├── FOC_Current_Step:      ~4.8µs (Clarke→Park→PI   │
+│   │   │                            →InvPark→SVPWM)          │
+│   │   └── Fault Detection+Other: ~1.2µs                    │
+│   ├── Interrupt Latency+Overhead: ~11µs                    │
+│   └── **Trigger ADC→PWM Output Total: ~33µs (66% period)** │
 ├─────────────────────────────────────────────────────────┤
 │ TIM6 (1kHz / 1ms)     →  Speed PI  →  Update Iq Ref      │
 ├─────────────────────────────────────────────────────────┤
@@ -401,7 +404,7 @@ tick_ms,state,loop,enc_raw,adc_ia_raw,adc_ib_raw,adc_vbus_raw,adc_bus_cur_raw,Ia
 | 2026-06-19 | ADC + PWM timing verified, ~6µs conversion |
 | 2026-06-22 | Sampling + PWM drivers fully verified |
 | 2026-06-23 | AS5048A encoder driver completed, ~10µs read |
-| 2026-06-24 | Three-loop cascaded FOC control completed, ~16µs current loop (incl. ADC+SPI) |
+| 2026-06-24 | Three-loop cascaded FOC control completed, ADC trigger→PWM output total ~33µs |
 | 2026-06-25 | Auto step, manual teach, damper modes all implemented |
 | 2026-06-25 | README documentation corrected: step 273LSB(6°), position loop Kd, mode-specific current PI, etc. |
 
