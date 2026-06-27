@@ -75,22 +75,22 @@ The code follows a clean **three-layer architecture** (Driver → Control → Ap
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ TIM1 (20kHz / 50µs)  →  Trigger ADC1 → Current Sampling │
-│                           + FOC Algorithm                 │
-│   ├── ADC1 HW Conversion:        ~6µs                      │
-│   ├── ADC Callback Execution:    ~16µs                     │
-│   │   ├── SPI Read Encoder:       ~10µs                     │
-│   │   ├── FOC_Current_Step:      ~4.8µs (Clarke→Park→PI   │
-│   │   │                            →InvPark→SVPWM)          │
-│   │   └── Fault Detection+Other: ~1.2µs                    │
-│   ├── Interrupt Latency+Overhead: ~11µs                    │
-│   └── **Trigger ADC→PWM Output Total: ~33µs (66% period)** │
+│                           + FOC Algorithm               │
+│   ├── ADC1 HW Conversion:        ~6µs                   │
+│   ├── ADC Callback Execution:    ~16µs                  │
+│   │   ├── SPI Read Encoder:       ~10µs                 │
+│   │   ├── FOC_Current_Step:      ~4.8µs (Clarke→Park→PI │
+│   │   │                            →InvPark→SVPWM)      │
+│   │   └── Fault Detection+Other: ~1.2µs                 │
+│   ├── Interrupt Latency+Overhead: ~11µs                 │
+│   └── Trigger ADC→PWM Output Total: ~33µs (66% period)  │
 ├─────────────────────────────────────────────────────────┤
-│ TIM6 (1kHz / 1ms)     →  Speed PI  →  Update Iq Ref      │
+│ TIM6 (1kHz / 1ms)     →  Speed PI  →  Update Iq Ref     │
 ├─────────────────────────────────────────────────────────┤
-│ TIM7 (100Hz / 10ms)   →  Position PI →  Update Speed Ref │
+│ TIM7 (100Hz / 10ms)   →  Position PI →  Update Speed Ref│
 ├─────────────────────────────────────────────────────────┤
-│ main loop              →  LED Heartbeat + Fault Recovery  │
-│                           + Mode Management                │
+│ main loop              →  LED Heartbeat + Fault Recovery│
+│                           + Mode Management             │
 └─────────────────────────────────────────────────────────┘
 ```
 
