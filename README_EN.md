@@ -284,9 +284,8 @@ STM32G431CBU6_MMSD/
 │   └── stm32cubemx/            # CubeMX generated CMake
 │
 └── document/                   # Documentation
-    ├── 编程日志.txt
-    ├── FOC_项目深度复盘.md
-    └── FOC_项目总结与面试准备.md
+    ├── 编程日志.txt (Dev log)
+    └── datasheets/             # Component datasheets
 ```
 
 ---
@@ -453,8 +452,6 @@ If no host software is available, enable `#define DEBUG_PRINT 1` in `app_foc.h` 
 - [DRV8313 Datasheet](https://www.ti.com/lit/ds/symlink/drv8313.pdf)
 - [AS5048A Datasheet](https://ams.com/documents/20143/36005/AS5048A_DS000744.pdf)
 - [iPower GM3506 Motor Specs](document/iPower%20GM3506%20Gimbal%20Motor%20with%20Encoder%20Specifications.txt)
-- [FOC Project Deep Review (Chinese)](document/FOC_项目深度复盘.md)
-- [Chinese Version of This README](README.md)
 
 ---
 

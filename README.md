@@ -282,8 +282,7 @@ STM32G431CBU6_MMSD/
 │
 └── document/                   # 文档
     ├── 编程日志.txt
-    ├── FOC_项目深度复盘.md
-    └── FOC_项目总结与面试准备.md
+    └── datasheets/             # 器件数据手册
 ```
 
 ---
@@ -450,7 +449,6 @@ STM32_Programmer_CLI --connect port=SWD --write build/Debug/STM32G431CBU6_MMSD.h
 - [DRV8313 数据手册](https://www.ti.com/lit/ds/symlink/drv8313.pdf)
 - [AS5048A 数据手册](https://ams.com/documents/20143/36005/AS5048A_DS000744.pdf)
 - [iPower GM3506 电机规格](document/iPower%20GM3506%20Gimbal%20Motor%20with%20Encoder%20Specifications.txt)
-- [FOC 项目深度复盘](document/FOC_项目深度复盘.md)
 
 ---
 
