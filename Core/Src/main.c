@@ -104,7 +104,7 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
-  /* 应用层初始化（FOC 系统 + 位置控制模式） */
+  /* 应用层初始化（FOC 系统 + 控制模式） */
   App_Init();
 
   /* USER CODE END 2 */
@@ -115,12 +115,10 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* 应用层主循环任务（LED 心跳 + 故障恢复 + 位置控制） */
+    /* 应用层主循环任务（LED 心跳 + 故障恢复 + 在线调参 + 控制模式） */
     App_Run();
 
     /* USER CODE BEGIN 3 */
-
-    /* USER CODE END 3 */
   }
   /* USER CODE END 3 */
 }

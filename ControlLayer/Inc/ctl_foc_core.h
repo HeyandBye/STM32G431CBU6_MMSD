@@ -129,7 +129,7 @@ typedef struct {
 #define FOC_FAULT_UNDERVOLTAGE  0x00000008U  /**< 母线欠压（无法正常调制） */
 
 /*==========================================================================*/
-/* FOC 运行模式（编译期切换，修改 FOC_MODE 宏即可）                             */
+/* FOC 运行模式                                                               */
 /*==========================================================================*/
 
 #define FOC_MODE_OPENLOOP  1  /**< 开环电压拖动（虚拟角度 + SVPWM）       */
@@ -138,7 +138,13 @@ typedef struct {
 #define FOC_MODE_POSITION  4  /**< 位置闭环（电流内环 + 位置外环）         */
 #define FOC_MODE_DAMPER    5  /**< 阻尼模式（转动有阻力, 停手即锁定）       */
 
-/** @brief 当前活跃的 FOC 模式（编译期常量，修改此处切换模式） */
+/** @brief FOC 运行模式枚举（运行时可用） */
+typedef uint8_t FOC_Mode_t;
+
+/**
+ * @brief 编译期默认启动模式（修改此宏切换启动模式）
+ *        可通过 VOFA+ 指令 7 在线切换到任何其他模式（OPENLOOP 除外）
+ */
 #define FOC_MODE  FOC_MODE_POSITION
 
 /*==========================================================================*/
@@ -150,6 +156,9 @@ extern FOC_t g_foc;
 
 /** @brief 全局开环 FOC 实例（仅在 FOC_MODE_OPENLOOP 时使用） */
 extern FOC_OpenLoop_t g_fol;
+
+/** @brief 运行时 FOC 模式（默认 = FOC_MODE, 可通过 FOC_SwitchMode() 在线切换） */
+extern FOC_Mode_t g_foc_mode;
 
 /*==========================================================================*/
 /* API                                                                      */
@@ -192,6 +201,16 @@ void FOC_EmergencyStop(FOC_t *foc);
  *          主循环中检测到 FAULT 状态后延时调用此函数。
  */
 int32_t FOC_RecoverFromFault(FOC_t *foc);
+
+/**
+ * @brief   运行时切换 FOC 控制模式（不需要重新烧录）
+ * @param   foc       FOC 控制器指针
+ * @param   new_mode  目标模式 (FOC_MODE_CURRENT/SPEED/POSITION/DAMPER)
+ * @return  0=切换成功, -1=不支持的模式或状态不允许
+ * @note    不支持切到 OPENLOOP。切换过程: 停止当前模式 → 重置相关 PID
+ *          → 启停 TIM6/TIM7 → 启动新模式。电流环始终保持运行。
+ */
+int32_t FOC_SwitchMode(FOC_t *foc, FOC_Mode_t new_mode);
 
 /* ---- 查询 ---- */
 

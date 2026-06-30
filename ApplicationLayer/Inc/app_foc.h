@@ -22,11 +22,12 @@ extern "C" {
 /* 编译期配置                                                                */
 /*==========================================================================*/
 
-/** @brief 位置环自动步进: 1=每1s转6°, 0=手动拧到新位置保持6秒即锁定 */
-#define POS_AUTO_STEP  1
+/** @brief 位置环自动步进: 1=每1s转6°, 0=手动拧到新位置保持6秒即锁定
+ *  @note  仅在 FOC_MODE == FOC_MODE_POSITION 时生效 */
+#define POS_AUTO_STEP  0
 
-/** @brief 串口调试打印: 1=启用, 0=关闭 */
-#define DEBUG_PRINT    0
+/** @brief 速度环目标转速 (RPM)，仅在 FOC_MODE == FOC_MODE_SPEED 时生效 */
+#define APP_SPEED_RPM  60.0f
 
 /** @brief 故障自动恢复延时 (ms) */
 #define FAULT_RECOVER_DELAY_MS  500U

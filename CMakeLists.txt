@@ -50,8 +50,6 @@ add_executable(${CMAKE_PROJECT_NAME}
     ControlLayer/Src/ctl_pid.c
     ControlLayer/Inc/ctl_foc_core.h
     ControlLayer/Src/ctl_foc_core.c
-    ControlLayer/Inc/ctl_foc_debug.h
-    ControlLayer/Src/ctl_foc_debug.c
     ControlLayer/Inc/ctl_foc_openloop.h
     ControlLayer/Src/ctl_foc_openloop.c
     ControlLayer/Inc/ctl_foc_current.h
@@ -63,7 +61,11 @@ add_executable(${CMAKE_PROJECT_NAME}
     ControlLayer/Inc/ctl_foc_damper.h
     ControlLayer/Src/ctl_foc_damper.c
     ApplicationLayer/Inc/app_foc.h
-    ApplicationLayer/Src/app_foc.c)
+    ApplicationLayer/Src/app_foc.c
+    CommunicationLayer/Inc/prot_justfloat.h
+    CommunicationLayer/Src/prot_justfloat.c
+    CommunicationLayer/Inc/diag_tuning.h
+    CommunicationLayer/Src/diag_tuning.c)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -84,6 +86,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     DriverLayer/Inc
     ControlLayer/Inc
     ApplicationLayer/Inc
+    CommunicationLayer/Inc
 )
 
 # Add project symbols (macros)

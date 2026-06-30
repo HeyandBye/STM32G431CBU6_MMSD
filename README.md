@@ -1,5 +1,6 @@
 # STM32G431CBU6_MMSD — 无刷直流电机 FOC 矢量控制项目
 
+> **版本**: v0.1.0  
 > **主控**: STM32G431CBU6 (Cortex-M4 @ 170MHz)  
 > **驱动**: DRV8313 三相 MOSFET 预驱动  
 > **编码器**: AS5048A 14-bit 磁旋转编码器 (SPI)  
@@ -35,7 +36,7 @@
 - **手动示教模式** — 手动拧到目标位置，保持 6 秒后锁定
 - **阻尼模式** — 转动时有阻力，松手即自由停止
 
-工程代码采用清晰的**三层架构**（驱动层 → 控制层 → 应用层），各层解耦、接口统一，便于维护和移植。
+工程代码采用**三层主架构**（驱动层 → 控制层 → 应用层），外加独立的**通信层**提供在线调试与调参能力。各层解耦、接口统一，便于维护和移植。
 
 ---
 
@@ -95,7 +96,7 @@
 
 ## 软件分层
 
-项目采用清晰的**三层架构**，从底向上依次为：
+项目采用**三层主架构 + 独立通信层**，从底向上依次为驱动层 → 控制层 → 应用层。通信层与应用层平级，为上层的调试/调参提供数据通道。
 
 > Core/ 和 Drivers/ 目录下为 STM32CubeMX 生成的 HAL 初始化代码和 ST 官方驱动库，属于工具链基础设施，不作为项目手写层。
 
@@ -126,7 +127,6 @@
 | 速度闭环 | `ctl_foc_speed` | 速度 PI 控制器，差分测速 |
 | 位置闭环 | `ctl_foc_position` | 位置 PI 控制器，编码器角度展开（无回绕） |
 | 阻尼模式 | `ctl_foc_damper` | 转动阻力模式，Iq=-gain×speed，纯比例负反馈 |
-| 调试输出 | `ctl_foc_debug` | USART1 CSV 格式打印，Excel/Python 可绘图 |
 
 ### 3️⃣ 应用层 (ApplicationLayer)
 
@@ -136,6 +136,15 @@
 |------|------|------|
 | 应用初始化 | `app_foc` | `App_Init()` — FOC 系统初始化 + 模式分发 |
 | 主循环任务 | `app_foc` | `App_Run()` — LED 心跳 + 故障恢复 + 位置控制 |
+
+### 🔗 通信层 (CommunicationLayer) — 与应用层平级
+
+VOFA+ JustFloat 协议，为上层提供在线调试与 PID 调参的数据通道。
+
+| 模块 | 文件 | 功能 |
+|------|------|------|
+| JustFloat 协议 | `prot_justfloat` | VOFA+ JustFloat 二进制帧构建/解析（float32 原始字节，比 CSV/JSON 高效）|
+| 在线调参 | `diag_tuning` | UART IDLE + DMA 双向通信，在线修改 PID 增益/电流给定/转速/位置/模式切换
 
 ---
 
@@ -242,8 +251,7 @@ STM32G431CBU6_MMSD/
 │   │   ├── ctl_foc_speed.h     #   速度闭环
 │   │   ├── ctl_foc_position.h  #   位置闭环
 │   │   ├── ctl_foc_openloop.h  #   开环控制
-│   │   ├── ctl_foc_damper.h    #   阻尼模式
-│   │   └── ctl_foc_debug.h     #   调试输出
+│   │   └── ctl_foc_damper.h    #   阻尼模式
 │   └── Src/                    # 源文件（同名 .c）
 │
 ├── DriverLayer/                # 驱动层
@@ -253,6 +261,12 @@ STM32G431CBU6_MMSD/
 │   │   ├── drv_tim_pwm.h       #   TIM1 PWM 输出
 │   │   ├── drv_nfault.h        #   DRV8313 故障保护
 │   │   └── drv_spi_as5048a_debug.h
+│   └── Src/                    # 源文件
+│
+├── CommunicationLayer/         # 通信层（在线调试 & 调参）
+│   ├── Inc/
+│   │   ├── prot_justfloat.h    #   VOFA+ JustFloat 协议
+│   │   └── diag_tuning.h       #   在线 PID 调参
 │   └── Src/                    # 源文件
 │
 ├── Core/                       # STM32CubeMX 生成
@@ -288,11 +302,11 @@ STM32G431CBU6_MMSD/
 
 ```bash
 # Debug 模式
-cmake --preset debug
+cmake --preset Debug
 cmake --build build/Debug
 
 # Release 模式
-cmake --preset release
+cmake --preset Release
 cmake --build build/Release
 ```
 
@@ -355,23 +369,44 @@ STM32_Programmer_CLI --connect port=SWD --write build/Debug/STM32G431CBU6_MMSD.h
 
 ## 调试接口
 
-### 串口输出 (USART1)
+### VOFA+ JustFloat 在线调参 (USART1)
+
+通过 **VOFA+** 上位机的 **JustFloat** 数据引擎，实现 FOC 实时数据可视化和在线 PID 调参，无需重新编译烧录。
 
 - 波特率: **115200-8-N-1**
-- 输出格式: **CSV**，每列以逗号分隔
-- 启用: `#define DEBUG_PRINT 1` (在 `app_foc.h` 中)
-- `App_Run()` 中每 **20ms** 调用 `FOC_Debug_Print_Compact` 输出精简调试数据，输出示例:
+- 协议: **JustFloat**（float32 原始二进制帧，效率远高于 CSV/JSON/printf）
+- 帧格式: `[Ch0][Ch1]...[ChN-1][Tail: 00 00 80 7F]`，每通道 4 字节 little-endian
+- 启用: `#define TUNING_ENABLE 1` (在 `diag_tuning.h` 中)
+- 发送周期: **5ms** (200Hz)，DMA 非阻塞
+
+**上行数据**（MCU → VOFA+，按控制模式自动切换通道布局）:
+
+| 模式 | 通道 |
+|------|------|
+| CURRENT | Id_ref, Id, Iq_ref, Iq, Vd, Vq, Ia, Ib, speed_rpm, mode (10ch) |
+| SPEED | speed_ref, speed_rpm, iq_ref, Iq, Vq, Ia, Ib, mode (8ch) |
+| POSITION | pos_cmd, pos_fb, speed_ref, speed_rpm, Iq, Vq, Ia, Ib, mode (9ch) |
+| DAMPER | 同 POSITION (9ch) |
+
+**下行指令**（VOFA+ → MCU，在线修改参数）:
+
+| 指令码 | 参数 | 说明 |
+|--------|------|------|
+| 1~4 | 电流环 Kp_id / Ki_id / Kp_iq / Ki_iq | 在线调整电流环 PI 增益 |
+| 5~8 | 速度环 Kp / Ki / Kd / Kr | 在线调整速度环 PID 增益 |
+| 9~12 | 位置环 Kp / Ki / Kd / Kr | 在线调整位置环 PID 增益 |
+| 13~16 | Id_ref / Iq_ref / Speed_ref / Pos_ref | 在线修改给定值 |
+| 17 | 模式 (2/3/4/5) | 在线切换 CURRENT/SPEED/POSITION/DAMPER |
+
+> VOFA+ 配置: 数据引擎选择 JustFloat，发送面板填 2 通道（ch0=指令码, ch1=参数值）。
+
+### 简化调试打印
+
+如需无上位机调试，可在 `app_foc.h` 中启用 `#define DEBUG_PRINT 1`，`App_Run()` 中每 **20ms** 输出精简 CSV 数据:
 
 ```
   tick   Id       Iq       Vd      Vq      rpm   theta
   1000  +0.0100  +0.4900  +2.300  +4.100  120.5   12.50
-```
-
-- 完整调试输出（通过 `FOC_Debug_Print` 调用，建议 500ms 间隔）:
-
-```
-tick_ms,state,loop,enc_raw,adc_ia_raw,adc_ib_raw,adc_vbus_raw,adc_bus_cur_raw,Ia,Ib,bus_cur,Id_ref,Id,Iq_ref,Iq,Vd,Vq,theta,sin_theta,cos_theta,Vbus,duty_a,duty_b,duty_c,fault
-1000,2,123,12500,2050,2048,1625,2048,0.0100,0.0200,0.000,0.00,0.01,0.50,0.49,2.300,4.100,12.50,0.985,0.173,12.00,0.420,0.500,0.380,0x00000000
 ```
 
 ### 故障代码
@@ -404,6 +439,8 @@ tick_ms,state,loop,enc_raw,adc_ia_raw,adc_ib_raw,adc_vbus_raw,adc_bus_cur_raw,Ia
 | 2026-06-24 | 三环串级 FOC 控制完成，触发 ADC→输出 PWM 总耗时 ~33µs |
 | 2026-06-25 | 自动步进、手动示教、阻尼模式全部实现 |
 | 2026-06-25 | README 文档修正：步进量 273LSB(6°)、位置环 Kd、电流环分模式描述等 |
+| 2026-06-27 | 通信层完成：VOFA+ JustFloat 协议 + 在线 PID 调参（UART IDLE + DMA 双向通信）|
+| 2026-06-30 | v0.1.0：READM 文档更新，加入版本号，补充通信层与在线调参说明 |
 
 ---
 

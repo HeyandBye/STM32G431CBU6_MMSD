@@ -41,6 +41,7 @@
 /*==========================================================================*/
 
 FOC_t g_foc;
+FOC_Mode_t g_foc_mode = FOC_MODE;  /* 运行时模式, 启动时 = 编译期默认 */
 
 #if FOC_MODE == FOC_MODE_OPENLOOP
 FOC_OpenLoop_t g_fol;
@@ -51,13 +52,18 @@ FOC_OpenLoop_t g_fol;
 /*==========================================================================*/
 
 /**
- * @brief   FOC 系统总初始化（驱动层 + 控制层 + 模式分发）
+ * @brief   FOC 系统总初始化（驱动层 + 全模式 PID 初始化 + 默认模式启动）
  * @note    初始化顺序:
  *          1. 驱动层: AS5048A → PWM → ADC 采样
  *          2. 等待 ADC 稳定 (100ms)
  *          3. 使能 PWM + DRV8313
- *          4. FOC 核心初始化 (Init + SetMotorParams)
- *          5. 按 FOC_MODE 宏分发模式 + 注册 ADC 回调
+ *          4. 电流环 Init → Calibrate → Start + 注册 ADC 回调
+ *          5. 初始化速度环、位置环、阻尼环的 PID 参数（备用）
+ *          6. 按 FOC_MODE 启动默认模式（= FOC_SwitchMode）
+ *
+ *          电流环是基础, 所有模式都需要, 因此始终初始化。
+ *          速度环/位置环 PID 在 Init 时配置好, 但不启动 TIM,
+ *          由 FOC_SwitchMode 按需启停 TIM6/TIM7。
  */
 void FOC_SystemInit(void)
 {
@@ -73,23 +79,12 @@ void FOC_SystemInit(void)
     drv_tim_pwm_enable();
     HAL_GPIO_WritePin(GPIO_Output_EN_GPIO_Port, GPIO_Output_EN_Pin, GPIO_PIN_SET);
 
-    /* 4. 模式分支: Init → Calibrate → SetRef → Start → 注册回调 */
+    /* 4. 电流环: 所有模式的基础, 始终初始化并启动 */
 #if FOC_MODE == FOC_MODE_OPENLOOP
     FOC_OpenLoop_Init(&g_fol, 5.0f, 0.10f);
     FOC_OpenLoop_Start(&g_fol);
     drv_adc_register_conv_cplt_callback(FOC_OpenLoop_Run_Callback);
-#elif FOC_MODE == FOC_MODE_CURRENT
-    {
-        FOC_Current_Config_t cfg = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
-        FOC_Current_Init(&g_foc, &cfg);
-    }
-    FOC_Current_CalibrateEncoder(&g_foc,
-                                 drv_as5048a_read_angle,
-                                 drv_tim_pwm_set_duty_f);
-    FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
-    FOC_Current_Start(&g_foc);
-    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
-#elif FOC_MODE == FOC_MODE_SPEED
+#else
     {
         FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 4.0f, 0.3f, 4.0f, 0.3f};
         FOC_Current_Init(&g_foc, &cfg_i);
@@ -97,60 +92,25 @@ void FOC_SystemInit(void)
     FOC_Current_CalibrateEncoder(&g_foc,
                                  drv_as5048a_read_angle,
                                  drv_tim_pwm_set_duty_f);
-    FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
-    FOC_Current_Start(&g_foc);
-    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
-    {
-        FOC_Speed_Config_t cfg_s = {0.002f, 0.001f, 0.0f, 1.0f, 1.0f, 2000.0f, 0.1f};
-        FOC_Speed_Init(&g_foc, &cfg_s);
-    }
-    FOC_Speed_SetRef(&g_foc, 0.0f);
-    FOC_Speed_Start(&g_foc);
-#elif FOC_MODE == FOC_MODE_POSITION
-    {
-        /* 电流 PI 从 4.0/0.3 降到 2.0/0.1: 减小 ADC 噪声放大, 静止时不振 */
-        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 2.0f, 0.1f, 2.0f, 0.1f};
-        FOC_Current_Init(&g_foc, &cfg_i);
-    }
-    FOC_Current_CalibrateEncoder(&g_foc,
-                                 drv_as5048a_read_angle,
-                                 drv_tim_pwm_set_duty_f);
-    FOC_Current_SetRef(&g_foc, 0.5f, 0.0f);
-    FOC_Current_Start(&g_foc);
-    drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
-    {
-        FOC_Speed_Config_t cfg_s = {0.002f, 0.001f, 0.0f, 1.0f, 1.0f, 2000.0f, 0.1f};
-        FOC_Speed_Init(&g_foc, &cfg_s);
-    }
-    FOC_Speed_SetRef(&g_foc, 0.0f);
-    FOC_Speed_Start(&g_foc);
-    {
-        FOC_Position_Config_t cfg_p = {0.10f, 0.0f, 0.03f, 1.0f, 500.0f, 0.1f};
-        FOC_Position_Init(&g_foc, &cfg_p);
-    }
-    FOC_Position_SetRef(&g_foc, 0U);
-    FOC_Position_Start(&g_foc);
-    HAL_TIM_Base_Start_IT(&htim7);
-#elif FOC_MODE == FOC_MODE_DAMPER
-    {
-        /* 阻尼模式用极低 PI 增益: 云台电机电感极小(µH级),
-         * 电流环带宽过高会与阻尼反馈形成振荡。kp=0.3/ki=0.01 约 1kHz 带宽 */
-        FOC_Current_Config_t cfg_i = {11, 1.0f, 2.0f, 12.0f, 0.3f, 0.01f, 0.3f, 0.01f};
-        FOC_Current_Init(&g_foc, &cfg_i);
-    }
-    FOC_Current_CalibrateEncoder(&g_foc,
-                                 drv_as5048a_read_angle,
-                                 drv_tim_pwm_set_duty_f);
-    /* 校准后 PWM 归 50%，避免电流环启动撞上校准电压 */
+    /* 校准后 PWM 归 50%, 避免模式切换时撞上校准电压 */
     drv_tim_pwm_set_duty_f(0.5f, 0.5f, 0.5f);
     FOC_Current_SetRef(&g_foc, 0.0f, 0.0f);
     FOC_Current_Start(&g_foc);
     drv_adc_register_conv_cplt_callback(FOC_Current_Run_Callback);
-    /* 阻尼增益 0.02 A/RPM: 柔和阻力, 避免与电流环形成机械振荡 */
+
+    /* 5. 预初始化速度环 + 位置环 + 阻尼环的 PID（不启动 TIM, 等 FOC_SwitchMode 按需启用） */
+    {
+        FOC_Speed_Config_t cfg_s = {0.002f, 0.001f, 0.0f, 1.0f, 1.0f, 2000.0f, 0.1f};
+        FOC_Speed_Init(&g_foc, &cfg_s);
+    }
+    {
+        FOC_Position_Config_t cfg_p = {0.10f, 0.0f, 0.03f, 1.0f, 500.0f, 0.1f};
+        FOC_Position_Init(&g_foc, &cfg_p);
+    }
     FOC_Damper_Init(&g_foc, 0.02f);
-    HAL_TIM_Base_Start_IT(&htim6);
-#else
-    drv_adc_register_conv_cplt_callback(NULL);
+
+    /* 6. 启动默认模式（编译期 FOC_MODE 决定） */
+    FOC_SwitchMode(&g_foc, FOC_MODE);
 #endif
 }
 
@@ -327,4 +287,80 @@ uint32_t FOC_CheckFault(const FOC_t *foc,
     if (enc_valid == 0) fault |= FOC_FAULT_ENCODER;
 
     return fault;
+}
+
+/*==========================================================================*/
+/* FOC_SwitchMode —— 运行时模式切换                                          */
+/*==========================================================================*/
+
+/**
+ * @brief   运行时切换 FOC 控制模式
+ * @param   foc       FOC 控制器指针
+ * @param   new_mode  目标模式 (FOC_MODE_CURRENT/SPEED/POSITION/DAMPER)
+ * @return  0=切换成功, -1=不支持的模式
+ * @note    前提: FOC_SystemInit 已完成（所有 PID 已初始化）。
+ *          切换过程: 停 TIM6/TIM7 → 重置相关 PID → 电流归零
+ *          → 设置新模式的 setpoint → 启停对应 TIM → 更新 g_foc_mode。
+ */
+int32_t FOC_SwitchMode(FOC_t *foc, FOC_Mode_t new_mode)
+{
+    if (foc == NULL) return -1;
+
+    /* 不支持 OPENLOOP 运行时切换（使用独立的 g_fol 实例） */
+    if (new_mode == FOC_MODE_OPENLOOP) return -1;
+
+    /* ---- 1. 停止当前模式的所有 TIM ---- */
+    HAL_TIM_Base_Stop_IT(&htim6);
+    HAL_TIM_Base_Stop_IT(&htim7);
+
+    /* ---- 2. 重置所有外环 PID, 电流归零 ---- */
+    CTL_PID_Reset(&foc->pid_speed);
+    CTL_PID_Reset(&foc->pid_pos);
+    FOC_Current_SetRef(foc, 0.0f, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_speed, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_pos, (float)foc->raw_angle);
+    foc->speed_ref  = 0.0f;
+    foc->pos_ref    = foc->raw_angle;
+    foc->speed_rpm  = 0.0f;
+
+    /* ---- 3. 按新模式启动 ---- */
+    switch (new_mode) {
+    case FOC_MODE_CURRENT:
+        /* 仅电流环, 不需外环 TIM */
+        break;
+
+    case FOC_MODE_SPEED:
+        FOC_Speed_SetRef(foc, 0.0f);
+        FOC_Speed_Start(foc);
+        HAL_TIM_Base_Start_IT(&htim6);
+        break;
+
+    case FOC_MODE_POSITION:
+        FOC_Speed_SetRef(foc, 0.0f);
+        FOC_Speed_Start(foc);
+        FOC_Position_SetRef(foc, foc->raw_angle);
+        FOC_Position_Start(foc);
+        HAL_TIM_Base_Start_IT(&htim6);
+        HAL_TIM_Base_Start_IT(&htim7);
+        break;
+
+    case FOC_MODE_DAMPER:
+        FOC_Damper_Init(foc, foc->damper_gain);
+        HAL_TIM_Base_Start_IT(&htim6);
+        break;
+
+    default:
+        return -1;
+    }
+
+    /* ---- 4. 同步电流给定（电流环始终在 RUN 状态） ---- */
+    FOC_Current_SetRef(foc, 0.0f, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_id, 0.0f);
+    CTL_PID_SetSetpoint(&foc->pid_iq, 0.0f);
+    CTL_PID_Reset(&foc->pid_id);
+    CTL_PID_Reset(&foc->pid_iq);
+
+    g_foc_mode = new_mode;
+
+    return 0;
 }

@@ -23,18 +23,22 @@
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM6) {
-#if FOC_MODE == FOC_MODE_SPEED
-        FOC_Speed_Run(&g_foc);
-#elif FOC_MODE == FOC_MODE_POSITION
-        FOC_Speed_Run(&g_foc);
-#elif FOC_MODE == FOC_MODE_DAMPER
-        FOC_Damper_Run(&g_foc);
-#endif
+        switch (g_foc_mode) {
+        case FOC_MODE_SPEED:
+        case FOC_MODE_POSITION:
+            FOC_Speed_Run(&g_foc);
+            break;
+        case FOC_MODE_DAMPER:
+            FOC_Damper_Run(&g_foc);
+            break;
+        default:
+            break;
+        }
     }
     if (htim->Instance == TIM7) {
-#if FOC_MODE == FOC_MODE_POSITION
-        FOC_Position_Run(&g_foc);
-#endif
+        if (g_foc_mode == FOC_MODE_POSITION) {
+            FOC_Position_Run(&g_foc);
+        }
     }
 }
 
