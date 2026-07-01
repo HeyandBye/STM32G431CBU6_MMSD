@@ -60,15 +60,23 @@ void FOC_OpenLoop_Run_Callback(void)
  */
 void FOC_OpenLoop_TestRamp(FOC_OpenLoop_t *fol, uint32_t tick_ms)
 {
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
 
-    if (tick_ms < 1000U) {
+    if (tick_ms < 1000U)
+    {
         /* 0~1s: 保持初始值 5Hz 10% */
-    } else if (tick_ms < 6000U) {
+    }
+    else if (tick_ms < 6000U)
+    {
         float t = (float)(tick_ms - 1000U) / 5000.0f;
         FOC_OpenLoop_SetFreq(fol, 5.0f + 45.0f * t);
         FOC_OpenLoop_SetAmplitude(fol, 0.10f + 0.25f * t);
-    } else {
+    }
+    else
+    {
         FOC_OpenLoop_SetFreq(fol, 50.0f);
         FOC_OpenLoop_SetAmplitude(fol, 0.35f);
     }
@@ -87,7 +95,10 @@ void FOC_OpenLoop_TestRamp(FOC_OpenLoop_t *fol, uint32_t tick_ms)
  */
 void FOC_OpenLoop_Init(FOC_OpenLoop_t *fol, float freq_hz, float amplitude)
 {
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
 
     fol->virtual_angle = 0.0f;
     fol->elec_freq_hz  = freq_hz;
@@ -110,7 +121,10 @@ void FOC_OpenLoop_Init(FOC_OpenLoop_t *fol, float freq_hz, float amplitude)
  */
 void FOC_OpenLoop_SetFreq(FOC_OpenLoop_t *fol, float freq_hz)
 {
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
     fol->elec_freq_hz = freq_hz;
 }
 
@@ -125,9 +139,18 @@ void FOC_OpenLoop_SetFreq(FOC_OpenLoop_t *fol, float freq_hz)
  */
 void FOC_OpenLoop_SetAmplitude(FOC_OpenLoop_t *fol, float amp)
 {
-    if (fol == NULL) return;
-    if (amp < 0.0f) amp = 0.0f;
-    if (amp > 1.0f) amp = 1.0f;
+    if (fol == NULL)
+    {
+        return;
+    }
+    if (amp < 0.0f)
+    {
+        amp = 0.0f;
+    }
+    if (amp > 1.0f)
+    {
+        amp = 1.0f;
+    }
     fol->amplitude = amp;
 }
 
@@ -154,20 +177,27 @@ void FOC_OpenLoop_Step(FOC_OpenLoop_t *fol, float vbus, uint16_t enc_raw)
     float vd, vq;
     float v_alpha, v_beta;
 
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
 
     /* Step 1: 虚拟角度累加 + 回绕 */
     delta_angle = OL_2PI * fol->elec_freq_hz * OL_TS;
-    fol->virtual_angle += delta_angle;
+    fol->virtual_angle = fol->virtual_angle + delta_angle;
 
-    if (fol->virtual_angle >= OL_ANGLE_WRAP) {
-        fol->virtual_angle -= OL_ANGLE_WRAP;
+    if (fol->virtual_angle >= OL_ANGLE_WRAP)
+    {
+        fol->virtual_angle = fol->virtual_angle - OL_ANGLE_WRAP;
     }
 
     /* Step 2: 电压给定 — Vd=0, Vq = amplitude × Vbus */
     vd = 0.0f;
     vq = fol->amplitude * vbus;
-    if (vbus < 0.1f) vbus = 12.0f;
+    if (vbus < 0.1f)
+    {
+        vbus = 12.0f;
+    }
 
     /* Step 3: 逆 Park — Vd,Vq → Vα,Vβ */
     CTL_InvPark(vd, vq, fol->virtual_angle, &v_alpha, &v_beta);
@@ -177,7 +207,7 @@ void FOC_OpenLoop_Step(FOC_OpenLoop_t *fol, float vbus, uint16_t enc_raw)
 
     /* 记录编码器（仅监控用） */
     fol->enc_raw    = enc_raw;
-    fol->step_count++;
+    fol->step_count = fol->step_count + 1U;
 }
 
 /*==========================================================================*/
@@ -195,7 +225,10 @@ void FOC_OpenLoop_Run(FOC_OpenLoop_t *fol)
     uint16_t raw_angle;
     float    vbus;
 
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
 
     /* 读传感器 */
     raw_angle = drv_as5048a_read_angle();
@@ -220,7 +253,10 @@ void FOC_OpenLoop_Run(FOC_OpenLoop_t *fol)
  */
 void FOC_OpenLoop_Start(FOC_OpenLoop_t *fol)
 {
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
     fol->virtual_angle = 0.0f;
     fol->step_count    = 0U;
 }
@@ -233,7 +269,10 @@ void FOC_OpenLoop_Start(FOC_OpenLoop_t *fol)
  */
 void FOC_OpenLoop_Stop(FOC_OpenLoop_t *fol)
 {
-    if (fol == NULL) return;
+    if (fol == NULL)
+    {
+        return;
+    }
     fol->duty_a = 0.5f;
     fol->duty_b = 0.5f;
     fol->duty_c = 0.5f;

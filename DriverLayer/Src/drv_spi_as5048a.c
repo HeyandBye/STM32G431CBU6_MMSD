@@ -49,7 +49,9 @@
 static inline void AS5048A_Delay360ns(void)
 {
     uint32_t start = DWT->CYCCNT;
-    while ((DWT->CYCCNT - start) < 50U) { }
+    while ((DWT->CYCCNT - start) < 50U)
+    {
+    }
 }
 
 /*==========================================================================*/
@@ -83,20 +85,27 @@ static uint16_t AS5048A_SPI_WriteByte(uint16_t TxData)
     AS5048A_Delay360ns();   /* CS 建立时间 ≥ 350ns */
 
     /* 确保 SPI 外设已使能（HAL 在首次传输时自动设置，寄存器版需手动保证）*/
-    if ((SPI1->CR1 & SPI_CR1_SPE) == 0U) {
-        SPI1->CR1 |= SPI_CR1_SPE;
+    if ((SPI1->CR1 & SPI_CR1_SPE) == 0U)
+    {
+        SPI1->CR1 = SPI1->CR1 | SPI_CR1_SPE;
     }
 
     /* 等待 TXE（发送缓冲空）→ 可写入新数据 */
-    while (!(SPI1->SR & SPI_SR_TXE)) { }
+    while (!(SPI1->SR & SPI_SR_TXE))
+    {
+    }
     /* 写 DR — 自动启动 16-bit SPI 传输 */
     SPI1->DR = TxData;
     /* 等待 RXNE（接收缓冲非空）→ 传输完成 */
-    while (!(SPI1->SR & SPI_SR_RXNE)) { }
+    while (!(SPI1->SR & SPI_SR_RXNE))
+    {
+    }
     /* 读 DR — 硬件自动清除 RXNE 标志 */
     rxData = (uint16_t)SPI1->DR;
     /* 等待 BSY 清除 → 最后一帧 SCK 结束 */
-    while (SPI1->SR & SPI_SR_BSY) { }
+    while (SPI1->SR & SPI_SR_BSY)
+    {
+    }
 
     AS5048A_Delay360ns();   /* CS 保持时间 ≥ 350ns */
     AS5048A_CS_HIGH();
@@ -121,11 +130,14 @@ static uint16_t AS5048A_SPI_WriteByte(uint16_t TxData)
  */
 static uint8_t parity_even(uint16_t v)
 {
-    if (v == 0U) return 0U;
-    v ^= v >> 8U;
-    v ^= v >> 4U;
-    v ^= v >> 2U;
-    v ^= v >> 1U;
+    if (v == 0U)
+    {
+        return 0U;
+    }
+    v = v ^ (v >> 8U);
+    v = v ^ (v >> 4U);
+    v = v ^ (v >> 2U);
+    v = v ^ (v >> 1U);
     return (uint8_t)(v & 1U);
 }
 
@@ -180,24 +192,27 @@ uint16_t drv_as5048a_read_reg(uint16_t reg_addr)
 
     /* ---- 帧 1：发送读命令（bit14=1 表示读, 带偶校验） ---- */
     cmd  = 0x4000U | reg_addr;
-    cmd |= (uint16_t)(parity_even(cmd) << 15U);
+    cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
     (void)AS5048A_SPI_WriteByte(cmd);
 
     /* ---- 帧 2：发送 NOP, 取回帧 1 命令对应的数据 ---- */
     cmd  = 0x4000U | CMD_NOP;
-    cmd |= (uint16_t)(parity_even(cmd) << 15U);
+    cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
     res  = AS5048A_SPI_WriteByte(cmd);
 
     as5048a_error_flag = 1U;  /* 默认假设有误, 下面校验通过再清零 */
 
-    if ((res & (1U << 14U)) == 0U) {
+    if ((res & (1U << 14U)) == 0U)
+    {
         /* bit14=0：通信正常, 提取 14-bit 数据并校验偶校验位 */
         data = res & 0x3FFFU;
         as5048a_error_flag = (uint8_t)(parity_even(data) ^ (res >> 15U));
-    } else {
+    }
+    else
+    {
         /* bit14=1：芯片报告错误, 清除错误标志 */
         cmd  = 0x4000U | CMD_CLEAR_ERROR;
-        cmd |= (uint16_t)(parity_even(cmd) << 15U);
+        cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
         (void)AS5048A_SPI_WriteByte(cmd);
     }
     return data;
@@ -233,26 +248,29 @@ void drv_as5048a_write_reg(uint16_t reg_addr, uint16_t value)
 
     /* ---- 帧 1：写命令（bit14=0） ---- */
     cmd  = reg_addr;
-    cmd |= (uint16_t)(parity_even(cmd) << 15U);
+    cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
     (void)AS5048A_SPI_WriteByte(cmd);
 
     /* ---- 帧 2：写入数据 ---- */
     cmd  = value & 0x3FFFU;
-    cmd |= (uint16_t)(parity_even(cmd) << 15U);
+    cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
     (void)AS5048A_SPI_WriteByte(cmd);
 
     /* ---- 帧 3：NOP 确认 ---- */
     cmd  = 0x4000U | CMD_NOP;
-    cmd |= (uint16_t)(parity_even(cmd) << 15U);
+    cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
     res  = AS5048A_SPI_WriteByte(cmd);
 
     as5048a_error_flag = 1U;
-    if ((res & (1U << 14U)) == 0U) {
+    if ((res & (1U << 14U)) == 0U)
+    {
         data = res & 0x3FFFU;
         as5048a_error_flag = (uint8_t)(parity_even(data) ^ (res >> 15U));
-    } else {
+    }
+    else
+    {
         cmd  = 0x4000U | CMD_CLEAR_ERROR;
-        cmd |= (uint16_t)(parity_even(cmd) << 15U);
+        cmd = cmd | (uint16_t)(parity_even(cmd) << 15U);
         (void)AS5048A_SPI_WriteByte(cmd);
     }
 }
@@ -275,9 +293,11 @@ uint16_t drv_as5048a_read_angle(void)
     int      retry;
 
     /* 自动重试最多 3 次, 应对杜邦线接触不良导致的偶发 SPI 失败 */
-    for (retry = 0; retry < 3; retry++) {
+    for (retry = 0; retry < 3; retry = retry + 1)
+    {
         val = drv_as5048a_read_reg(CMD_ANGLE);
-        if (as5048a_error_flag == 0U) {
+        if (as5048a_error_flag == 0U)
+        {
             return val;
         }
     }
@@ -295,7 +315,8 @@ uint16_t drv_as5048a_read_angle(void)
 uint16_t drv_as5048a_read_magnitude(void)
 {
     uint16_t val = drv_as5048a_read_reg(CMD_READ_MAG);
-    if (as5048a_error_flag != 0U) {
+    if (as5048a_error_flag != 0U)
+    {
         return 0U;
     }
     return val;
@@ -314,7 +335,8 @@ uint16_t drv_as5048a_read_magnitude(void)
 uint16_t drv_as5048a_read_diag(void)
 {
     uint16_t val = drv_as5048a_read_reg(CMD_READ_DIAG);
-    if (as5048a_error_flag != 0U) {
+    if (as5048a_error_flag != 0U)
+    {
         return 0U;
     }
     return val;
@@ -340,8 +362,8 @@ uint16_t drv_as5048a_read_diag(void)
 void drv_as5048a_init(void)
 {
     /* 使能 DWT 周期计数器（供 AS5048A_Delay360ns 使用）*/
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    CoreDebug->DEMCR = CoreDebug->DEMCR | CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL = DWT->CTRL | DWT_CTRL_CYCCNTENA_Msk;
 
     AS5048A_CS_HIGH();
     HAL_Delay(1U);   /* 等待芯片上电稳定 */

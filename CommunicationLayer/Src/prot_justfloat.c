@@ -24,14 +24,16 @@ size_t JF_BuildFrame(uint8_t *buf, const float *data, size_t channels)
     size_t i;
     size_t offset;
 
-    if (buf == NULL || data == NULL || channels == 0U || channels > JF_MAX_CHANNELS) {
+    if (buf == NULL || data == NULL || channels == 0U || channels > JF_MAX_CHANNELS)
+    {
         return 0U;
     }
 
     offset = 0U;
 
     /* 逐通道拷贝 float → little-endian 字节 */
-    for (i = 0U; i < channels; i++) {
+    for (i = 0U; i < channels; i = i + 1U)
+    {
         uint32_t raw;
         /* 将 float 的位模式安全复制到 uint32_t */
         memcpy(&raw, &data[i], sizeof(raw));
@@ -41,12 +43,12 @@ size_t JF_BuildFrame(uint8_t *buf, const float *data, size_t channels)
         buf[offset + 2U] = (uint8_t)(raw >> 16U);
         buf[offset + 3U] = (uint8_t)(raw >> 24U);
 
-        offset += JF_FLOAT_SIZE;
+        offset = offset + JF_FLOAT_SIZE;
     }
 
     /* 追加帧尾 */
     memcpy(&buf[offset], jf_tail, JF_TAIL_SIZE);
-    offset += JF_TAIL_SIZE;
+    offset = offset + JF_TAIL_SIZE;
 
     return offset;
 }
@@ -74,21 +76,31 @@ int JF_SendFrame(void *huart, const float *data, size_t channels)
     uint8_t  *buf;
     size_t    len;
 
-    if (h == NULL || data == NULL || channels == 0U || channels > JF_MAX_CHANNELS) {
+    if (h == NULL || data == NULL || channels == 0U || channels > JF_MAX_CHANNELS)
+    {
         return -1;
     }
 
     /* DMA 忙则丢弃本帧, 不等待 */
-    if (h->gState != HAL_UART_STATE_READY) {
+    if (h->gState != HAL_UART_STATE_READY)
+    {
         return -2;
     }
 
     /* 切换缓冲 */
-    jf_tx_idx = (jf_tx_idx == 0U) ? 1U : 0U;
+    if (jf_tx_idx == 0U)
+    {
+        jf_tx_idx = 1U;
+    }
+    else
+    {
+        jf_tx_idx = 0U;
+    }
     buf = jf_tx_buf[jf_tx_idx];
 
     len = JF_BuildFrame(buf, data, channels);
-    if (len == 0U) {
+    if (len == 0U)
+    {
         return -1;
     }
 
@@ -103,10 +115,12 @@ int JF_SendRaw(void *huart, const uint8_t *frame, size_t frame_len)
 {
     UART_HandleTypeDef *h = (UART_HandleTypeDef *)huart;
 
-    if (h == NULL || frame == NULL || frame_len == 0U) {
+    if (h == NULL || frame == NULL || frame_len == 0U)
+    {
         return -1;
     }
-    if (h->gState != HAL_UART_STATE_READY) {
+    if (h->gState != HAL_UART_STATE_READY)
+    {
         return -2;
     }
     return (int)HAL_UART_Transmit_DMA(h, frame, (uint16_t)frame_len);
@@ -122,38 +136,44 @@ size_t JF_ParseFrame(const uint8_t *raw, size_t raw_len,
     size_t scan_pos;
     size_t ch;
 
-    if (raw == NULL || out == NULL || raw_len < JF_TAIL_SIZE || max_ch == 0U) {
+    if (raw == NULL || out == NULL || raw_len < JF_TAIL_SIZE || max_ch == 0U)
+    {
         return 0U;
     }
 
     /* 从尾部向前扫描帧尾 [00 00 80 7F] */
-    for (scan_pos = 0U; scan_pos + JF_TAIL_SIZE <= raw_len; scan_pos++) {
+    for (scan_pos = 0U; scan_pos + JF_TAIL_SIZE <= raw_len; scan_pos = scan_pos + 1U)
+    {
         if (raw[scan_pos + 0U] == jf_tail[0] &&
             raw[scan_pos + 1U] == jf_tail[1] &&
             raw[scan_pos + 2U] == jf_tail[2] &&
-            raw[scan_pos + 3U] == jf_tail[3]) {
+            raw[scan_pos + 3U] == jf_tail[3])
+        {
 
             /* 帧尾之前的数据长度必须是 4 的倍数 */
-            if ((scan_pos % JF_FLOAT_SIZE) != 0U) {
+            if ((scan_pos % JF_FLOAT_SIZE) != 0U)
+            {
                 continue;
             }
 
             ch = scan_pos / JF_FLOAT_SIZE;
-            if (ch == 0U || ch > max_ch) {
+            if (ch == 0U || ch > max_ch)
+            {
                 continue;
             }
 
             /* 逐通道解析 float */
-            for (size_t i = 0U; i < ch; i++) {
+            for (size_t i2 = 0U; i2 < ch; i2 = i2 + 1U)
+            {
                 uint32_t raw_val;
-                size_t   off = i * JF_FLOAT_SIZE;
+                size_t   off = i2 * JF_FLOAT_SIZE;
 
                 raw_val  = (uint32_t)raw[off];
-                raw_val |= (uint32_t)raw[off + 1U] << 8U;
-                raw_val |= (uint32_t)raw[off + 2U] << 16U;
-                raw_val |= (uint32_t)raw[off + 3U] << 24U;
+                raw_val = raw_val | ((uint32_t)raw[off + 1U] << 8U);
+                raw_val = raw_val | ((uint32_t)raw[off + 2U] << 16U);
+                raw_val = raw_val | ((uint32_t)raw[off + 3U] << 24U);
 
-                memcpy(&out[i], &raw_val, sizeof(float));
+                memcpy(&out[i2], &raw_val, sizeof(float));
             }
 
             return ch;
@@ -169,7 +189,8 @@ size_t JF_ParseFrame(const uint8_t *raw, size_t raw_len,
 
 void JF_GetTail(uint8_t out[4])
 {
-    if (out != NULL) {
+    if (out != NULL)
+    {
         memcpy(out, jf_tail, JF_TAIL_SIZE);
     }
 }

@@ -59,7 +59,10 @@
 void CTL_PID_Init(CTL_PID_t *pid, float kp, float ki, float kd, float kr,
                   float deriv_alpha, float out_min, float out_max)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
 
     pid->Kp           = kp;
     pid->Ki           = ki;
@@ -75,19 +78,32 @@ void CTL_PID_Init(CTL_PID_t *pid, float kp, float ki, float kd, float kr,
     pid->deriv_alpha  = deriv_alpha;
 
     /* Kr 钳位 [0, 1] */
-    if (pid->Kr < 0.0f) pid->Kr = 0.0f;
-    if (pid->Kr > 1.0f) pid->Kr = 1.0f;
+    if (pid->Kr < 0.0f)
+    {
+        pid->Kr = 0.0f;
+    }
+    if (pid->Kr > 1.0f)
+    {
+        pid->Kr = 1.0f;
+    }
 
     /* 积分限幅 = 输出限幅 × 0.3——防深度饱和 */
     pid->integral_max = out_max * DEFAULT_INTEGRAL_RATIO;
     pid->integral_min = out_min * DEFAULT_INTEGRAL_RATIO;
-    if (pid->integral_min > pid->integral_max) {
+    if (pid->integral_min > pid->integral_max)
+    {
         pid->integral_min = pid->integral_max;
     }
 
     /* 微分滤波系数钳位 */
-    if (pid->deriv_alpha <= 0.0f) pid->deriv_alpha = DEFAULT_DERIV_ALPHA;
-    if (pid->deriv_alpha >  1.0f) pid->deriv_alpha = 1.0f;
+    if (pid->deriv_alpha <= 0.0f)
+    {
+        pid->deriv_alpha = DEFAULT_DERIV_ALPHA;
+    }
+    if (pid->deriv_alpha >  1.0f)
+    {
+        pid->deriv_alpha = 1.0f;
+    }
 }
 
 /**
@@ -98,7 +114,10 @@ void CTL_PID_Init(CTL_PID_t *pid, float kp, float ki, float kd, float kr,
  */
 void CTL_PID_SetSetpoint(CTL_PID_t *pid, float setpoint)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
     pid->setpoint = setpoint;
 }
 
@@ -113,13 +132,22 @@ void CTL_PID_SetSetpoint(CTL_PID_t *pid, float setpoint)
  */
 void CTL_PID_SetGains(CTL_PID_t *pid, float kp, float ki, float kd, float kr)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
     pid->Kp = kp;
     pid->Ki = ki;
     pid->Kd = kd;
     pid->Kr = kr;
-    if (pid->Kr < 0.0f) pid->Kr = 0.0f;
-    if (pid->Kr > 1.0f) pid->Kr = 1.0f;
+    if (pid->Kr < 0.0f)
+    {
+        pid->Kr = 0.0f;
+    }
+    if (pid->Kr > 1.0f)
+    {
+        pid->Kr = 1.0f;
+    }
 }
 
 /**
@@ -130,10 +158,19 @@ void CTL_PID_SetGains(CTL_PID_t *pid, float kp, float ki, float kd, float kr)
  */
 void CTL_PID_SetDerivAlpha(CTL_PID_t *pid, float deriv_alpha)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
     pid->deriv_alpha = deriv_alpha;
-    if (pid->deriv_alpha <= 0.0f) pid->deriv_alpha = DEFAULT_DERIV_ALPHA;
-    if (pid->deriv_alpha >  1.0f) pid->deriv_alpha = 1.0f;
+    if (pid->deriv_alpha <= 0.0f)
+    {
+        pid->deriv_alpha = DEFAULT_DERIV_ALPHA;
+    }
+    if (pid->deriv_alpha >  1.0f)
+    {
+        pid->deriv_alpha = 1.0f;
+    }
 }
 
 /**
@@ -145,20 +182,30 @@ void CTL_PID_SetDerivAlpha(CTL_PID_t *pid, float deriv_alpha)
  */
 void CTL_PID_SetLimits(CTL_PID_t *pid, float out_min, float out_max)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
 
     pid->output_max = out_max;
     pid->output_min = out_min;
 
     pid->integral_max = out_max * DEFAULT_INTEGRAL_RATIO;
     pid->integral_min = out_min * DEFAULT_INTEGRAL_RATIO;
-    if (pid->integral_min > pid->integral_max) {
+    if (pid->integral_min > pid->integral_max)
+    {
         pid->integral_min = pid->integral_max;
     }
 
     /* 立即钳位现有积分到新范围——防止限幅缩小后积分越界 */
-    if (pid->integral > pid->integral_max) pid->integral = pid->integral_max;
-    if (pid->integral < pid->integral_min) pid->integral = pid->integral_min;
+    if (pid->integral > pid->integral_max)
+    {
+        pid->integral = pid->integral_max;
+    }
+    if (pid->integral < pid->integral_min)
+    {
+        pid->integral = pid->integral_min;
+    }
 }
 
 /**
@@ -180,7 +227,10 @@ float CTL_PID_Update(CTL_PID_t *pid, float feedback)
     float deriv_new;
     int   frozen;
 
-    if (pid == NULL) return 0.0f;
+    if (pid == NULL)
+    {
+        return 0.0f;
+    }
 
     /* 存储反馈值（供外部诊断查询） */
     pid->feedback = feedback;
@@ -190,7 +240,8 @@ float CTL_PID_Update(CTL_PID_t *pid, float feedback)
 
     /* ---- Step 2: 微分项 = Kd×(e(k)-e(k-1)) + IIR 低通滤波 ----
      *         Kd=0 时跳过整个微分分支（零开销） */
-    if (pid->Kd != 0.0f) {
+    if (pid->Kd != 0.0f)
+    {
         /* 后向差分: Δe = e(k) - e(k-1) */
         deriv_raw = pid->Kd * (error - pid->last_error);
 
@@ -199,7 +250,9 @@ float CTL_PID_Update(CTL_PID_t *pid, float feedback)
          * α=0.1 → 新值占 10%，旧值占 90%，平滑效果强 */
         deriv_new = pid->deriv_alpha * deriv_raw
                   + (1.0f - pid->deriv_alpha) * pid->deriv_state;
-    } else {
+    }
+    else
+    {
         deriv_new = 0.0f;
     }
 
@@ -209,30 +262,43 @@ float CTL_PID_Update(CTL_PID_t *pid, float feedback)
 
     /* ---- Step 4: 钳位输出到 [out_min, out_max] ---- */
     u_out = u_raw;
-    if (u_out > pid->output_max) u_out = pid->output_max;
-    if (u_out < pid->output_min) u_out = pid->output_min;
+    if (u_out > pid->output_max)
+    {
+        u_out = pid->output_max;
+    }
+    if (u_out < pid->output_min)
+    {
+        u_out = pid->output_min;
+    }
 
     /* ---- Step 5: 抗积分饱和——判断是否冻结 ---- */
     frozen = 0;
-    if (u_raw > pid->output_max && error > 0.0f) {
+    if (u_raw > pid->output_max && error > 0.0f)
+    {
         /* 正饱和 (u_raw 超上限) 且误差仍为正 (还需正向调节)
          * → 继续积分只会加剧饱和 → 冻结 */
         frozen = 1;
     }
-    if (u_raw < pid->output_min && error < 0.0f) {
+    if (u_raw < pid->output_min && error < 0.0f)
+    {
         /* 负饱和且误差仍为负 → 冻结 */
         frozen = 1;
     }
 
     /* 未冻结: 正常更新积分、微分滤波状态、误差历史 */
-    if (!frozen) {
+    if (!frozen)
+    {
         /* 积分累积 + 内部钳位 */
-        pid->integral += pid->Ki * error;
+        pid->integral = pid->integral + pid->Ki * error;
 
         if (pid->integral > pid->integral_max)
+        {
             pid->integral = pid->integral_max;
+        }
         if (pid->integral < pid->integral_min)
+        {
             pid->integral = pid->integral_min;
+        }
 
         /* 微分滤波状态更新 */
         pid->deriv_state = deriv_new;
@@ -255,7 +321,10 @@ float CTL_PID_Update(CTL_PID_t *pid, float feedback)
  */
 void CTL_PID_Reset(CTL_PID_t *pid)
 {
-    if (pid == NULL) return;
+    if (pid == NULL)
+    {
+        return;
+    }
     pid->integral    = 0.0f;
     pid->deriv_state = 0.0f;
     pid->last_error  = 0.0f;

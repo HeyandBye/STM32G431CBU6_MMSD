@@ -98,7 +98,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
     int32_t offset;
 
-    if (hadc->Instance == ADC1) {
+    if (hadc->Instance == ADC1)
+    {
         /* ---- ADC1: 相电流 Ia(PA0/IN1), Ib(PA1/IN2) ---- */
 
         /* Ia = (raw[0] - 2048) × 0.004028 */
@@ -117,7 +118,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 
         /* 调用注册的控制回调（如 FOC_xxx_Run）——
          * 相电流数据已就绪, 是执行控制环路的最佳时机 */
-        if (s_adc_conv_cplt_cb != NULL) {
+        if (s_adc_conv_cplt_cb != NULL)
+        {
             s_adc_conv_cplt_cb();
         }
 
@@ -129,7 +131,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
          * TIM1 更新 ISR 拉高 PA4 → ADC 转换完成拉低 → 示波器测脉宽
          * 测试结果: 约 6µs */
 
-    } else if (hadc->Instance == ADC2) {
+    }
+    else if (hadc->Instance == ADC2)
+    {
         /* ---- ADC2: 母线电流(PA6/IN3), 母线电压(PA7/IN4) ---- */
 
         /* 母线电流（同 TMCS1107A3B 电流公式） */
@@ -144,7 +148,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
          * TIM6 更新 ISR 拉高 PA4 → ADC 转换完成拉低 → 示波器测脉宽
          * 测试结果: 约 6µs */
 
-    } else {
+    }
+    else
+    {
         /* 其他 ADC 实例不处理（预留 ADC3/ADC4） */
     }
 }

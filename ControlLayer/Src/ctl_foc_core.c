@@ -121,7 +121,10 @@ void FOC_SystemInit(void)
  */
 void FOC_Init(FOC_t *foc)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
     FOC_t zero = {0};
     *foc = zero;
     foc->state = FOC_STATE_IDLE;
@@ -143,7 +146,10 @@ void FOC_SetMotorParams(FOC_t   *foc,
                         float    current_limit,
                         float    vbus_nominal)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     foc->motor.pole_pairs    = pole_pairs;
     foc->motor.enc_offset    = enc_offset;
@@ -161,7 +167,10 @@ void FOC_SetMotorParams(FOC_t   *foc,
  */
 void FOC_EmergencyStop(FOC_t *foc)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     foc->state  = FOC_STATE_FAULT;
     foc->id_ref = 0.0f;
@@ -185,8 +194,14 @@ void FOC_EmergencyStop(FOC_t *foc)
  */
 int32_t FOC_RecoverFromFault(FOC_t *foc)
 {
-    if (foc == NULL) return -1;
-    if (foc->state != FOC_STATE_FAULT) return -1;
+    if (foc == NULL)
+    {
+        return -1;
+    }
+    if (foc->state != FOC_STATE_FAULT)
+    {
+        return -1;
+    }
 
     /* 1. 清零故障标志 */
     foc->fault_code  = FOC_FAULT_NONE;
@@ -224,7 +239,10 @@ int32_t FOC_RecoverFromFault(FOC_t *foc)
  */
 FOC_State_t FOC_GetState(const FOC_t *foc)
 {
-    if (foc == NULL) return FOC_STATE_IDLE;
+    if (foc == NULL)
+    {
+        return FOC_STATE_IDLE;
+    }
     return foc->state;
 }
 
@@ -237,9 +255,18 @@ FOC_State_t FOC_GetState(const FOC_t *foc)
  */
 void FOC_GetCurrents(const FOC_t *foc, float *id, float *iq)
 {
-    if (foc == NULL) return;
-    if (id != NULL) *id = foc->id;
-    if (iq != NULL) *iq = foc->iq;
+    if (foc == NULL)
+    {
+        return;
+    }
+    if (id != NULL)
+    {
+        *id = foc->id;
+    }
+    if (iq != NULL)
+    {
+        *iq = foc->iq;
+    }
 }
 
 /**
@@ -251,10 +278,22 @@ void FOC_GetCurrents(const FOC_t *foc, float *id, float *iq)
  */
 void FOC_GetDuties(const FOC_t *foc, float *da, float *db, float *dc)
 {
-    if (foc == NULL) return;
-    if (da != NULL) *da = foc->duty_a;
-    if (db != NULL) *db = foc->duty_b;
-    if (dc != NULL) *dc = foc->duty_c;
+    if (foc == NULL)
+    {
+        return;
+    }
+    if (da != NULL)
+    {
+        *da = foc->duty_a;
+    }
+    if (db != NULL)
+    {
+        *db = foc->duty_b;
+    }
+    if (dc != NULL)
+    {
+        *dc = foc->duty_c;
+    }
 }
 
 /**
@@ -275,16 +314,30 @@ uint32_t FOC_CheckFault(const FOC_t *foc,
 {
     uint32_t fault = FOC_FAULT_NONE;
 
-    if (foc == NULL) return FOC_FAULT_NONE;
+    if (foc == NULL)
+    {
+        return FOC_FAULT_NONE;
+    }
 
-    if (foc->vbus > bus_voltage_max) fault |= FOC_FAULT_OVERVOLTAGE;
-    if (foc->vbus < 0.5f)           fault |= FOC_FAULT_UNDERVOLTAGE;
+    if (foc->vbus > bus_voltage_max)
+    {
+        fault = fault | FOC_FAULT_OVERVOLTAGE;
+    }
+    if (foc->vbus < 0.5f)
+    {
+        fault = fault | FOC_FAULT_UNDERVOLTAGE;
+    }
 
     if (foc->ia > current_max || foc->ia < -current_max ||
         foc->ib > current_max || foc->ib < -current_max)
-        fault |= FOC_FAULT_OVERCURRENT;
+    {
+        fault = fault | FOC_FAULT_OVERCURRENT;
+    }
 
-    if (enc_valid == 0) fault |= FOC_FAULT_ENCODER;
+    if (enc_valid == 0)
+    {
+        fault = fault | FOC_FAULT_ENCODER;
+    }
 
     return fault;
 }
@@ -304,10 +357,16 @@ uint32_t FOC_CheckFault(const FOC_t *foc,
  */
 int32_t FOC_SwitchMode(FOC_t *foc, FOC_Mode_t new_mode)
 {
-    if (foc == NULL) return -1;
+    if (foc == NULL)
+    {
+        return -1;
+    }
 
     /* 不支持 OPENLOOP 运行时切换（使用独立的 g_fol 实例） */
-    if (new_mode == FOC_MODE_OPENLOOP) return -1;
+    if (new_mode == FOC_MODE_OPENLOOP)
+    {
+        return -1;
+    }
 
     /* ---- 1. 停止当前模式的所有 TIM ---- */
     HAL_TIM_Base_Stop_IT(&htim6);
@@ -324,7 +383,8 @@ int32_t FOC_SwitchMode(FOC_t *foc, FOC_Mode_t new_mode)
     foc->speed_rpm  = 0.0f;
 
     /* ---- 3. 按新模式启动 ---- */
-    switch (new_mode) {
+    switch (new_mode)
+    {
     case FOC_MODE_CURRENT:
         /* 仅电流环, 不需外环 TIM */
         break;

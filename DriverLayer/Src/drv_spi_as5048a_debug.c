@@ -136,7 +136,7 @@ void drv_as5048a_debug_run_tests(void)
 
     /* ---- 串口输出测试结果（自动适配单/多函数模式） ---- */
 #if (TEST_UART_ENABLE == 1)
-    test_round++;
+    test_round = test_round + 1U;
     {
         int32_t len;
         uint16_t pos = 0;
@@ -146,7 +146,10 @@ void drv_as5048a_debug_run_tests(void)
         len = snprintf((char *)uart_buf, (size_t)(sizeof(uart_buf) - pos),
             "\r\n========== AS5048A Test Round %lu ==========\r\n",
             (unsigned long)test_round);
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif /* TEST_ENABLED_COUNT > 1 */
 
         /* ---- 逐函数输出（单函数模式无表头表尾，纯数据流） ---- */
@@ -155,7 +158,10 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s = %5u  |  cycles=%5lu  |  ~%lu us\r\n",
             "1) drv_as5048a_read_angle()", test_angle,
             (unsigned long)test_cycle_angle, (unsigned long)CYCLES_TO_US(test_cycle_angle));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLE_READ_MAG == 1)
@@ -163,7 +169,10 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s = %5u  |  cycles=%5lu  |  ~%lu us\r\n",
             "2) drv_as5048a_read_magnitude()", test_mag,
             (unsigned long)test_cycle_mag, (unsigned long)CYCLES_TO_US(test_cycle_mag));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLE_READ_DIAG == 1)
@@ -171,7 +180,10 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s = %5u  |  cycles=%5lu  |  ~%lu us\r\n",
             "3) drv_as5048a_read_diag()", test_diag,
             (unsigned long)test_cycle_diag, (unsigned long)CYCLES_TO_US(test_cycle_diag));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLE_READ_REG == 1)
@@ -179,7 +191,10 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s = %5u  |  cycles=%5lu  |  ~%lu us\r\n",
             "4) drv_as5048a_read_reg()", test_reg,
             (unsigned long)test_cycle_read_reg, (unsigned long)CYCLES_TO_US(test_cycle_read_reg));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLE_WRITE_REG == 1)
@@ -187,7 +202,10 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s |  cycles=%5lu  |  ~%lu us\r\n",
             "5) drv_as5048a_write_reg() (clear err)",
             (unsigned long)test_cycle_write_reg, (unsigned long)CYCLES_TO_US(test_cycle_write_reg));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLE_GET_ERROR == 1)
@@ -195,14 +213,20 @@ void drv_as5048a_debug_run_tests(void)
             " %-28s = %5u  |  cycles=%5lu  |  ~%lu us\r\n",
             "6) drv_as5048a_get_error()", test_err,
             (unsigned long)test_cycle_get_err, (unsigned long)CYCLES_TO_US(test_cycle_get_err));
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
 #if (TEST_ENABLED_COUNT > 1)
         /* 表尾（仅多函数模式） */
         len = snprintf((char *)(uart_buf + pos), (size_t)(sizeof(uart_buf) - pos),
             "============================================\r\n");
-        if (len > 0) pos += (uint16_t)len;
+        if (len > 0)
+        {
+            pos = pos + (uint16_t)len;
+        }
 #endif
 
         if (pos > 0)

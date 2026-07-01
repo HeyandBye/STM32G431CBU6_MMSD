@@ -53,7 +53,10 @@ static uint8_t tuning_initialized = 0U;
 
 void Tuning_Init(void *huart)
 {
-    if (huart == NULL) return;
+    if (huart == NULL)
+    {
+        return;
+    }
 
     p_huart = (UART_HandleTypeDef *)huart;
 
@@ -81,11 +84,18 @@ void Tuning_Init(void *huart)
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    if (huart == NULL || huart->Instance != USART1) return;
-    if (!tuning_initialized) return;
+    if (huart == NULL || huart->Instance != USART1)
+    {
+        return;
+    }
+    if (!tuning_initialized)
+    {
+        return;
+    }
 
     /* 有数据且未溢出 → 拷贝到帧缓冲供主循环解析 */
-    if (Size > 0U && Size <= TUNING_RX_BUF_SIZE) {
+    if (Size > 0U && Size <= TUNING_RX_BUF_SIZE)
+    {
         memcpy(rx_frame, rx_buf, Size);
         rx_frame_len = (size_t)Size;
         rx_ready = 1U;
@@ -118,12 +128,14 @@ static int Tuning_ParseCommand(const uint8_t *frame, size_t len,
     size_t i;
 
     if (frame == NULL || cmd == NULL || params == NULL ||
-        n_params == NULL || len < (JF_TAIL_SIZE + JF_FLOAT_SIZE)) {
+        n_params == NULL || len < (JF_TAIL_SIZE + JF_FLOAT_SIZE))
+    {
         return -1;
     }
 
     ch_count = JF_ParseFrame(frame, len, all_floats, JF_MAX_CHANNELS);
-    if (ch_count < 2U) {
+    if (ch_count < 2U)
+    {
         /* 至少需要 1 个指令 float + 1 个参数 float */
         return -1;
     }
@@ -131,16 +143,21 @@ static int Tuning_ParseCommand(const uint8_t *frame, size_t len,
     /* 第一个 float 的整数部分作为指令码 (1.0~17.0 → cmd 1~17) */
     {
         int cmd_int = (int)(all_floats[0] + 0.5f);
-        if (cmd_int < 1 || cmd_int > 17) return -1;
+        if (cmd_int < 1 || cmd_int > 17)
+        {
+            return -1;
+        }
         *cmd = (uint8_t)cmd_int;
     }
 
     /* 后续 float 为参数 */
     *n_params = ch_count - 1U;
-    if (*n_params > max_p) {
+    if (*n_params > max_p)
+    {
         *n_params = max_p;
     }
-    for (i = 0U; i < *n_params; i++) {
+    for (i = 0U; i < *n_params; i = i + 1U)
+    {
         params[i] = all_floats[i + 1U];
     }
 
@@ -156,10 +173,14 @@ void Tuning_ExecuteCommand(FOC_t *foc, uint8_t cmd,
 {
     float val;
 
-    if (foc == NULL || params == NULL || n < 1U) return;
+    if (foc == NULL || params == NULL || n < 1U)
+    {
+        return;
+    }
     val = params[0];  /* 所有指令都是单参数 */
 
-    switch ((TuneCmd_t)cmd) {
+    switch ((TuneCmd_t)cmd)
+    {
 
     /* ---- 电流环 PID ---- */
     case TUNE_CMD_KP_ID:
@@ -229,12 +250,24 @@ void Tuning_ExecuteCommand(FOC_t *foc, uint8_t cmd,
     case TUNE_CMD_MODE:
         {
             FOC_Mode_t m = (FOC_Mode_t)(val + 0.5f);
-            if (m >= FOC_MODE_CURRENT && m <= FOC_MODE_DAMPER) {
-                if (FOC_SwitchMode(foc, m) == 0) {
-                    printf("[Tune] Mode -> %d (%s)\r\n", (int)m,
-                           m == FOC_MODE_CURRENT  ? "CURRENT" :
-                           m == FOC_MODE_SPEED    ? "SPEED"   :
-                           m == FOC_MODE_POSITION ? "POSITION": "DAMPER");
+            if (m >= FOC_MODE_CURRENT && m <= FOC_MODE_DAMPER)
+            {
+                if (FOC_SwitchMode(foc, m) == 0)
+                {
+                    const char *mode_name = "DAMPER";
+                    if (m == FOC_MODE_CURRENT)
+                    {
+                        mode_name = "CURRENT";
+                    }
+                    else if (m == FOC_MODE_SPEED)
+                    {
+                        mode_name = "SPEED";
+                    }
+                    else if (m == FOC_MODE_POSITION)
+                    {
+                        mode_name = "POSITION";
+                    }
+                    printf("[Tune] Mode -> %d (%s)\r\n", (int)m, mode_name);
                 }
             }
         }
@@ -260,62 +293,78 @@ static size_t Tuning_BuildChannels(const FOC_t *foc, float *data, size_t max_ch)
 {
     size_t ch = 0U;
 
-    if (foc == NULL || data == NULL || max_ch == 0U) return 0U;
+    if (foc == NULL || data == NULL || max_ch == 0U)
+    {
+        return 0U;
+    }
 
-    switch (g_foc_mode) {
+    switch (g_foc_mode)
+    {
 
     case FOC_MODE_CURRENT:
         /* 10 通道: Id_ref, Id, Iq_ref, Iq, Vd, Vq, Ia, Ib, speed_rpm, mode */
-        if (max_ch < 10U) return 0U;
-        data[ch++] = foc->id_ref;
-        data[ch++] = foc->id;
-        data[ch++] = foc->iq_ref;
-        data[ch++] = foc->iq;
-        data[ch++] = foc->vd;
-        data[ch++] = foc->vq;
-        data[ch++] = foc->ia;
-        data[ch++] = foc->ib;
-        data[ch++] = foc->speed_rpm;
-        data[ch++] = (float)g_foc_mode;
+        if (max_ch < 10U)
+        {
+            return 0U;
+        }
+        data[ch] = foc->id_ref;       ch = ch + 1U;
+        data[ch] = foc->id;           ch = ch + 1U;
+        data[ch] = foc->iq_ref;       ch = ch + 1U;
+        data[ch] = foc->iq;           ch = ch + 1U;
+        data[ch] = foc->vd;           ch = ch + 1U;
+        data[ch] = foc->vq;           ch = ch + 1U;
+        data[ch] = foc->ia;           ch = ch + 1U;
+        data[ch] = foc->ib;           ch = ch + 1U;
+        data[ch] = foc->speed_rpm;    ch = ch + 1U;
+        data[ch] = (float)g_foc_mode; ch = ch + 1U;
         break;
 
     case FOC_MODE_SPEED:
         /* 8 通道: speed_ref, speed_rpm, iq_ref, Iq, Vq, Ia, Ib, mode */
-        if (max_ch < 8U) return 0U;
-        data[ch++] = foc->speed_ref;
-        data[ch++] = foc->speed_rpm;
-        data[ch++] = foc->iq_ref;
-        data[ch++] = foc->iq;
-        data[ch++] = foc->vq;
-        data[ch++] = foc->ia;
-        data[ch++] = foc->ib;
-        data[ch++] = (float)g_foc_mode;
+        if (max_ch < 8U)
+        {
+            return 0U;
+        }
+        data[ch] = foc->speed_ref;    ch = ch + 1U;
+        data[ch] = foc->speed_rpm;    ch = ch + 1U;
+        data[ch] = foc->iq_ref;       ch = ch + 1U;
+        data[ch] = foc->iq;           ch = ch + 1U;
+        data[ch] = foc->vq;           ch = ch + 1U;
+        data[ch] = foc->ia;           ch = ch + 1U;
+        data[ch] = foc->ib;           ch = ch + 1U;
+        data[ch] = (float)g_foc_mode; ch = ch + 1U;
         break;
 
     case FOC_MODE_POSITION:
     case FOC_MODE_DAMPER:
         /* 9 通道: pos_cmd, pos_fb, speed_ref, speed_rpm, Iq, Vq, Ia, Ib, mode */
-        if (max_ch < 9U) return 0U;
-        data[ch++] = (float)foc->pid_pos.setpoint;
-        data[ch++] = foc->unwrapped_pos;
-        data[ch++] = foc->speed_ref;
-        data[ch++] = foc->speed_rpm;
-        data[ch++] = foc->iq;
-        data[ch++] = foc->vq;
-        data[ch++] = foc->ia;
-        data[ch++] = foc->ib;
-        data[ch++] = (float)g_foc_mode;
+        if (max_ch < 9U)
+        {
+            return 0U;
+        }
+        data[ch] = (float)foc->pid_pos.setpoint;  ch = ch + 1U;
+        data[ch] = foc->unwrapped_pos;             ch = ch + 1U;
+        data[ch] = foc->speed_ref;                 ch = ch + 1U;
+        data[ch] = foc->speed_rpm;                 ch = ch + 1U;
+        data[ch] = foc->iq;                        ch = ch + 1U;
+        data[ch] = foc->vq;                        ch = ch + 1U;
+        data[ch] = foc->ia;                        ch = ch + 1U;
+        data[ch] = foc->ib;                        ch = ch + 1U;
+        data[ch] = (float)g_foc_mode;              ch = ch + 1U;
         break;
 
     default:
         /* 6 通道: Id, Iq, Vd, Vq, speed_rpm, mode */
-        if (max_ch < 6U) return 0U;
-        data[ch++] = foc->id;
-        data[ch++] = foc->iq;
-        data[ch++] = foc->vd;
-        data[ch++] = foc->vq;
-        data[ch++] = foc->speed_rpm;
-        data[ch++] = (float)g_foc_mode;
+        if (max_ch < 6U)
+        {
+            return 0U;
+        }
+        data[ch] = foc->id;           ch = ch + 1U;
+        data[ch] = foc->iq;           ch = ch + 1U;
+        data[ch] = foc->vd;           ch = ch + 1U;
+        data[ch] = foc->vq;           ch = ch + 1U;
+        data[ch] = foc->speed_rpm;    ch = ch + 1U;
+        data[ch] = (float)g_foc_mode; ch = ch + 1U;
         break;
     }
 
@@ -331,10 +380,14 @@ void Tuning_SendNow(const FOC_t *foc)
     float  data[JF_MAX_CHANNELS];
     size_t ch;
 
-    if (!tuning_initialized || foc == NULL || p_huart == NULL) return;
+    if (!tuning_initialized || foc == NULL || p_huart == NULL)
+    {
+        return;
+    }
 
     ch = Tuning_BuildChannels(foc, data, JF_MAX_CHANNELS);
-    if (ch > 0U) {
+    if (ch > 0U)
+    {
         JF_SendFrame(p_huart, data, ch);
     }
 }
@@ -349,14 +402,19 @@ void Tuning_Run(FOC_t *foc)
     float    params[8];
     size_t   n_params;
 
-    if (!tuning_initialized || foc == NULL) return;
+    if (!tuning_initialized || foc == NULL)
+    {
+        return;
+    }
 
     /* ---- 1. 处理接收到的调参指令 ---- */
-    if (rx_ready) {
+    if (rx_ready)
+    {
         rx_ready = 0U;
 
         if (Tuning_ParseCommand(rx_frame, rx_frame_len,
-                                &cmd, params, 8U, &n_params) == 0) {
+                                &cmd, params, 8U, &n_params) == 0)
+        {
             Tuning_ExecuteCommand(foc, cmd, params, n_params);
 
             /* 确认指令: 立即发送一次当前数据 */
@@ -369,7 +427,8 @@ void Tuning_Run(FOC_t *foc)
     /* ---- 2. 周期性发送 FOC 数据 ---- */
     {
         uint32_t tick = HAL_GetTick();
-        if (tick >= next_send_tick) {
+        if (tick >= next_send_tick)
+        {
             Tuning_SendNow(foc);
             next_send_tick = tick + TUNING_SEND_PERIOD_MS;
         }

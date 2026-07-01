@@ -37,7 +37,8 @@ void App_Init(void)
     Tuning_Init(&huart1);
 #endif
 
-    switch (g_foc_mode) {
+    switch (g_foc_mode)
+    {
     case FOC_MODE_POSITION:
 # if POS_AUTO_STEP
         FOC_Position_SetRef(&g_foc, 0U);
@@ -76,17 +77,23 @@ void App_Run(void)
 
     /* ---- 1. LED 心跳 (1Hz) ---- */
     tick_now = HAL_GetTick();
-    if (tick_now >= tick_led) {
+    if (tick_now >= tick_led)
+    {
         HAL_GPIO_TogglePin(GPIOC, GPIO_Output_LED_Pin);
         tick_led = tick_now + 1000U;
     }
 
     /* ---- 2. 故障自动恢复 ---- */
-    if (g_foc.state == FOC_STATE_FAULT) {
-        if (fault_tick == 0U) {
+    if (g_foc.state == FOC_STATE_FAULT)
+    {
+        if (fault_tick == 0U)
+        {
             fault_tick = HAL_GetTick();
-        } else if ((HAL_GetTick() - fault_tick) >= FAULT_RECOVER_DELAY_MS) {
-            if (FOC_RecoverFromFault(&g_foc) == 0) {
+        }
+        else if ((HAL_GetTick() - fault_tick) >= FAULT_RECOVER_DELAY_MS)
+        {
+            if (FOC_RecoverFromFault(&g_foc) == 0)
+            {
             }
             fault_tick = 0U;
         }
@@ -99,16 +106,19 @@ void App_Run(void)
 #endif
 
     /* ---- 4. 控制模式 ---- */
-    if (g_foc_mode == FOC_MODE_POSITION) {
+    if (g_foc_mode == FOC_MODE_POSITION)
+    {
 # if POS_AUTO_STEP
         /* 自动步进: 每 1s 转 6° (273 LSB), 持续同向旋转 */
         tick_now = HAL_GetTick();
-        if (tick_now >= tick_pos) {
-            pos_step++;
-            pos_cmd += 273.0f;
+        if (tick_now >= tick_pos)
+        {
+            pos_step = pos_step + 1;
+            pos_cmd = pos_cmd + 273.0f;
             /* 转完一圈 (16384 LSB) → 归零, 重置 PID 防跳变 */
-            if (pos_cmd >= 16384.0f) {
-                pos_cmd -= 16384.0f;
+            if (pos_cmd >= 16384.0f)
+            {
+                pos_cmd = pos_cmd - 16384.0f;
                 pos_step = 0;
                 CTL_PID_Reset(&g_foc.pid_pos);
             }
@@ -122,16 +132,25 @@ void App_Run(void)
             float sp  = g_foc.pid_pos.setpoint;
             float fb  = g_foc.unwrapped_pos;
             float err = sp - fb;
-            if (err < 0.0f) err = -err;
-            if (err > 500.0f) {
-                if (!hold_active) {
+            if (err < 0.0f)
+            {
+                err = -err;
+            }
+            if (err > 500.0f)
+            {
+                if (!hold_active)
+                {
                     hold_active = 1;
                     tick_hold   = tick_now;
-                } else if (tick_now - tick_hold >= 6000U) {
+                }
+                else if (tick_now - tick_hold >= 6000U)
+                {
                     CTL_PID_SetSetpoint(&g_foc.pid_pos, fb);
                     hold_active = 0;
                 }
-            } else {
+            }
+            else
+            {
                 hold_active = 0;
             }
         }

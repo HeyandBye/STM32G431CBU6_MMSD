@@ -28,9 +28,11 @@ volatile uint8_t g_nfault_triggered = 0;
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == GPIO_EXTI11_nFAULT_Pin) {
+    if (GPIO_Pin == GPIO_EXTI11_nFAULT_Pin)
+    {
         g_nfault_triggered = 1;
-        if (g_foc.state >= FOC_STATE_READY) {
+        if (g_foc.state >= FOC_STATE_READY)
+        {
             drv_tim_pwm_moe_off();
             HAL_GPIO_WritePin(GPIOC, GPIO_Output_EN_Pin, GPIO_PIN_RESET);
         }

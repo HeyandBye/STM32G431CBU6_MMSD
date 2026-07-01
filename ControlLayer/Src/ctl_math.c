@@ -58,6 +58,11 @@
 void CTL_Clarke(float ia, float ib,
                 float *i_alpha, float *i_beta)
 {
+    if (i_alpha == NULL || i_beta == NULL)
+    {
+        return;
+    }
+
     /* α 轴 = A 相电流（幅值不变形式的最简情况） */
     /* β 轴 = (Ia+2*Ib)/√3，预计算 ONE_OVER_SQRT3 避免运行时除法 */
     *i_alpha = ia;
@@ -84,6 +89,11 @@ void CTL_Clarke(float ia, float ib,
 void CTL_Park(float i_alpha, float i_beta, float theta,
               float *id, float *iq)
 {
+    if (id == NULL || iq == NULL)
+    {
+        return;
+    }
+
     float s, c;
     /* arm_sin_cos_f32 输入单位为度（非弧度），需转换；
        一次查表同时返回 sin 和 cos，比分别调用快一倍 */
@@ -112,6 +122,11 @@ void CTL_Park(float i_alpha, float i_beta, float theta,
 void CTL_InvPark(float vd, float vq, float theta,
                  float *v_alpha, float *v_beta)
 {
+    if (v_alpha == NULL || v_beta == NULL)
+    {
+        return;
+    }
+
     float s, c;
     /* arm_sin_cos_f32: 输入角度（度），一次查表同时得 sin+cos */
     arm_sin_cos_f32(theta * RAD_TO_DEG, &s, &c);
@@ -142,6 +157,11 @@ void CTL_InvPark(float vd, float vq, float theta,
 void CTL_SVPWM(float  v_alpha, float  v_beta, float vbus,
                float *duty_a,  float *duty_b, float *duty_c)
 {
+    if (duty_a == NULL || duty_b == NULL || duty_c == NULL)
+    {
+        return;
+    }
+    
     float va, vb, vc;
     float vmax, vmin, vcm;
 
@@ -152,28 +172,61 @@ void CTL_SVPWM(float  v_alpha, float  v_beta, float vbus,
 
     /* Step 2: 共模注入量 = (max + min) / 2 */
     vmax = va;
-    if (vb > vmax) vmax = vb;
-    if (vc > vmax) vmax = vc;
+    if (vb > vmax)
+    {
+        vmax = vb;
+    }
+    if (vc > vmax)
+    {
+        vmax = vc;
+    }
     vmin = va;
-    if (vb < vmin) vmin = vb;
-    if (vc < vmin) vmin = vc;
+    if (vb < vmin)
+    {
+        vmin = vb;
+    }
+    if (vc < vmin)
+    {
+        vmin = vc;
+    }
     vcm = 0.5f * (vmax + vmin);
 
     /* Step 3: 归一化——物理电压 (V) → PWM 占空比 [0,1]
      *         防除零: Vbus < 0.1V 时钳到 0.1V（正常≥12V，仅异常掉电触发） */
-    if (vbus < 0.1f) vbus = 0.1f;
+    if (vbus < 0.1f)
+    {
+        vbus = 0.1f;
+    }
 
     *duty_a = 0.5f + (va - vcm) / vbus;
     *duty_b = 0.5f + (vb - vcm) / vbus;
     *duty_c = 0.5f + (vc - vcm) / vbus;
 
     /* Step 4: 硬钳位 [0,1]——浮点舍入误差的最后防线 */
-    if (*duty_a > 1.0f) *duty_a = 1.0f;
-    if (*duty_a < 0.0f) *duty_a = 0.0f;
-    if (*duty_b > 1.0f) *duty_b = 1.0f;
-    if (*duty_b < 0.0f) *duty_b = 0.0f;
-    if (*duty_c > 1.0f) *duty_c = 1.0f;
-    if (*duty_c < 0.0f) *duty_c = 0.0f;
+    if (*duty_a > 1.0f)
+    {
+        *duty_a = 1.0f;
+    }
+    if (*duty_a < 0.0f)
+    {
+        *duty_a = 0.0f;
+    }
+    if (*duty_b > 1.0f)
+    {
+        *duty_b = 1.0f;
+    }
+    if (*duty_b < 0.0f)
+    {
+        *duty_b = 0.0f;
+    }
+    if (*duty_c > 1.0f)
+    {
+        *duty_c = 1.0f;
+    }
+    if (*duty_c < 0.0f)
+    {
+        *duty_c = 0.0f;
+    }
 }
 
 /*==========================================================================*/
@@ -199,10 +252,13 @@ float CTL_RawToElectrical(uint16_t raw, uint8_t pole_pairs, uint16_t enc_offset)
     /* 环形减法: (raw - offset) mod 16384
      * 转 int32_t 防 uint16_t 减法回绕 */
     adjusted = (int32_t)raw - (int32_t)enc_offset;
-    if (adjusted < 0) {
-        adjusted += 16384;
-    } else if (adjusted >= 16384) {
-        adjusted -= 16384;
+    if (adjusted < 0)
+    {
+        adjusted = adjusted + 16384;
+    }
+    else if (adjusted >= 16384)
+    {
+        adjusted = adjusted - 16384;
     }
 
     /* 机械角度 = adjusted * (2π/16384) */

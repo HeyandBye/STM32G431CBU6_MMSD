@@ -184,13 +184,31 @@ void drv_tim_pwm_disable(void)
 void drv_tim_pwm_set_duty(uint16_t a, uint16_t b, uint16_t c)
 {
 #if (PWM_DUTY_MIN > 0U)
-    if (a < PWM_DUTY_MIN) { a = PWM_DUTY_MIN; }
-    if (b < PWM_DUTY_MIN) { b = PWM_DUTY_MIN; }
-    if (c < PWM_DUTY_MIN) { c = PWM_DUTY_MIN; }
+    if (a < PWM_DUTY_MIN)
+    {
+        a = PWM_DUTY_MIN;
+    }
+    if (b < PWM_DUTY_MIN)
+    {
+        b = PWM_DUTY_MIN;
+    }
+    if (c < PWM_DUTY_MIN)
+    {
+        c = PWM_DUTY_MIN;
+    }
 #endif
-    if (a > PWM_DUTY_MAX) { a = PWM_DUTY_MAX; }
-    if (b > PWM_DUTY_MAX) { b = PWM_DUTY_MAX; }
-    if (c > PWM_DUTY_MAX) { c = PWM_DUTY_MAX; }
+    if (a > PWM_DUTY_MAX)
+    {
+        a = PWM_DUTY_MAX;
+    }
+    if (b > PWM_DUTY_MAX)
+    {
+        b = PWM_DUTY_MAX;
+    }
+    if (c > PWM_DUTY_MAX)
+    {
+        c = PWM_DUTY_MAX;
+    }
 
     /* 直接写 TIM1 CCR 寄存器（无 HAL 开销） */
     __HAL_TIM_SET_COMPARE(p_pwm_tim, TIM_CHANNEL_1, a);

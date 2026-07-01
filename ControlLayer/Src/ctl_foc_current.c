@@ -52,14 +52,22 @@ void FOC_Current_Run_Callback(void)
  */
 void FOC_Current_TestRamp(FOC_t *foc, uint32_t tick_ms)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
-    if (tick_ms < 1000U) {
+    if (tick_ms < 1000U)
+    {
         /* 0~1s: Id=0.5A 锁 */
-    } else if (tick_ms < 1500U) {
+    }
+    else if (tick_ms < 1500U)
+    {
         float t = (float)(tick_ms - 1000U) / 500.0f;
         FOC_Current_SetRef(foc, 0.5f * (1.0f - t), 1.0f * t);
-    } else {
+    }
+    else
+    {
         FOC_Current_SetRef(foc, 0.0f, 1.0f);
     }
 }
@@ -80,7 +88,10 @@ void FOC_Current_TestRamp(FOC_t *foc, uint32_t tick_ms)
  */
 void FOC_Current_Init(FOC_t *foc, const FOC_Current_Config_t *cfg)
 {
-    if (foc == NULL || cfg == NULL) return;
+    if (foc == NULL || cfg == NULL)
+    {
+        return;
+    }
 
     /* ① 清零 */
     FOC_Init(foc);
@@ -115,10 +126,16 @@ void FOC_Current_ConfigPID(FOC_t *foc,
 {
     float vbus_limit;
 
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     vbus_limit = foc->motor.vbus_nominal;
-    if (vbus_limit < 0.1f) vbus_limit = 12.0f;
+    if (vbus_limit < 0.1f)
+    {
+        vbus_limit = 12.0f;
+    }
 
     CTL_PID_Init(&foc->pid_id, kp_id, ki_id, 0.0f, 1.0f,
                  DEFAULT_DERIV_ALPHA, -vbus_limit, vbus_limit);
@@ -138,7 +155,10 @@ void FOC_Current_ConfigPID(FOC_t *foc,
  */
 void FOC_Current_SetEncoderOffset(FOC_t *foc, uint16_t offset)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
     foc->motor.enc_offset = offset;
 }
 
@@ -158,14 +178,21 @@ void FOC_Current_CalibrateEncoder(FOC_t      *foc,
     uint32_t tick_start;
     uint16_t raw;
 
-    if (foc == NULL) return;
-    if (read_angle_fn == NULL || set_duty_fn == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
+    if (read_angle_fn == NULL || set_duty_fn == NULL)
+    {
+        return;
+    }
 
     /* θ=0 矢量: duty_offset=0.40 → da=0.90, db=0.30, dc=0.30 */
     set_duty_fn(0.90f, 0.30f, 0.30f);
 
     tick_start = HAL_GetTick();
-    while ((HAL_GetTick() - tick_start) < 500U) {
+    while ((HAL_GetTick() - tick_start) < 500U)
+    {
         HAL_Delay(1);
     }
 
@@ -180,8 +207,14 @@ void FOC_Current_CalibrateEncoder(FOC_t      *foc,
  */
 void FOC_Current_Start(FOC_t *foc)
 {
-    if (foc == NULL) return;
-    if (foc->state != FOC_STATE_READY) return;
+    if (foc == NULL)
+    {
+        return;
+    }
+    if (foc->state != FOC_STATE_READY)
+    {
+        return;
+    }
 
     CTL_PID_Reset(&foc->pid_id);
     CTL_PID_Reset(&foc->pid_iq);
@@ -203,7 +236,10 @@ void FOC_Current_Start(FOC_t *foc)
  */
 void FOC_Current_Stop(FOC_t *foc)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     foc->state  = FOC_STATE_READY;
     foc->duty_a = 0.5f;
@@ -227,14 +263,29 @@ void FOC_Current_SetRef(FOC_t *foc, float id_ref, float iq_ref)
 {
     float limit;
 
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     limit = foc->motor.current_limit;
 
-    if (id_ref >  limit) id_ref =  limit;
-    if (id_ref < -limit) id_ref = -limit;
-    if (iq_ref >  limit) iq_ref =  limit;
-    if (iq_ref < -limit) iq_ref = -limit;
+    if (id_ref >  limit)
+    {
+        id_ref =  limit;
+    }
+    if (id_ref < -limit)
+    {
+        id_ref = -limit;
+    }
+    if (iq_ref >  limit)
+    {
+        iq_ref =  limit;
+    }
+    if (iq_ref < -limit)
+    {
+        iq_ref = -limit;
+    }
 
     foc->id_ref = id_ref;
     foc->iq_ref = iq_ref;
@@ -260,7 +311,10 @@ void FOC_Current_Step(FOC_t   *foc,
                       float    ib,
                       float    vbus)
 {
-    if (foc == NULL) return;
+    if (foc == NULL)
+    {
+        return;
+    }
 
     /* 1. 电角度 + sin/cos（arm_sin_cos_f32 一次查表同时得两者） */
     foc->raw_angle  = raw_angle;
@@ -293,7 +347,7 @@ void FOC_Current_Step(FOC_t   *foc,
     foc->ia    = ia;
     foc->ib    = ib;
     foc->vbus  = vbus;
-    foc->loop_count++;
+    foc->loop_count = foc->loop_count + 1U;
 }
 
 /**
@@ -318,8 +372,14 @@ void FOC_Current_Run(FOC_t *foc)
     uint32_t  fault;
     uint32_t  threshold;
 
-    if (foc == NULL) return;
-    if (foc->state != FOC_STATE_RUNNING) return;
+    if (foc == NULL)
+    {
+        return;
+    }
+    if (foc->state != FOC_STATE_RUNNING)
+    {
+        return;
+    }
 
     /* 读传感器 */
     raw_angle = drv_as5048a_read_angle();
@@ -328,7 +388,8 @@ void FOC_Current_Run(FOC_t *foc)
     vbus      = g_bus_vol;
 
     /* 编码器读数兜底: 失败时用上一有效角度, 避免传 0 导致磁场角度错误 */
-    if (raw_angle == 0U && drv_as5048a_get_error() != 0U) {
+    if (raw_angle == 0U && drv_as5048a_get_error() != 0U)
+    {
         raw_angle = foc->raw_angle;
     }
 
@@ -340,29 +401,43 @@ void FOC_Current_Run(FOC_t *foc)
 
     /* 故障检测（分级消抖: 硬故障 5 次, 编码器 100 次） */
     fault = FOC_FAULT_NONE;
-    if (foc->loop_count > 2000U) {
+    if (foc->loop_count > 2000U)
+    {
         fault = FOC_CheckFault(foc, 20.0f, 2.5f,
                                drv_as5048a_get_error() == 0);
     }
 
-    if (fault != FOC_FAULT_NONE) {
+    if (fault != FOC_FAULT_NONE)
+    {
         /* 累计连续故障计数（按故障类型区分） */
-        if (fault == foc->fault_code) {
-            foc->fault_consec++;
-        } else {
+        if (fault == foc->fault_code)
+        {
+            foc->fault_consec = foc->fault_consec + 1U;
+        }
+        else
+        {
             foc->fault_code  = fault;
             foc->fault_consec = 1U;
         }
 
         /* 按故障类型选阈值: 编码器=100 次(5ms), 硬故障=5 次(250µs) */
-        threshold = (fault == FOC_FAULT_ENCODER)
-                    ? FAULT_DEBOUNCE_ENC : FAULT_DEBOUNCE_HARD;
+        if (fault == FOC_FAULT_ENCODER)
+        {
+            threshold = FAULT_DEBOUNCE_ENC;
+        }
+        else
+        {
+            threshold = FAULT_DEBOUNCE_HARD;
+        }
 
-        if (foc->fault_consec >= threshold) {
+        if (foc->fault_consec >= threshold)
+        {
             FOC_EmergencyStop(foc);
             drv_tim_pwm_moe_off();
         }
-    } else {
+    }
+    else
+    {
         /* 无故障 → 清零连续计数器 */
         foc->fault_consec = 0U;
     }
