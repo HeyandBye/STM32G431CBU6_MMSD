@@ -28,6 +28,30 @@ void FOC_Position_Init(FOC_t *foc, const FOC_Position_Config_t *cfg)
     foc->pos_speed_limit = cfg->speed_limit;
 }
 
+/**
+ * @brief   折叠 unwrapped_pos 到指定 setpoint 的 ±8192 范围内（最短路径）
+ * @note    仅在 setpoint 变更时调用, 不在每周期 Run 中调用。
+ *          同步补偿 pid_pos.last_error, 避免微分项突变。
+ */
+static void fold_unwrapped_to(FOC_t *foc, float target)
+{
+    float diff = foc->unwrapped_pos - target;
+    if (diff > 8192.0f)
+    {
+        int    wraps = (int)((diff + 8192.0f) / 16384.0f);
+        float  shift = (float)wraps * 16384.0f;
+        foc->unwrapped_pos    -= shift;
+        foc->pid_pos.last_error -= shift;
+    }
+    else if (diff < -8192.0f)
+    {
+        int    wraps = (int)((-diff + 8192.0f) / 16384.0f);
+        float  shift = (float)wraps * 16384.0f;
+        foc->unwrapped_pos    += shift;
+        foc->pid_pos.last_error += shift;
+    }
+}
+
 void FOC_Position_SetRef(FOC_t *foc, uint16_t pos_raw)
 {
     if (foc == NULL)
@@ -35,6 +59,8 @@ void FOC_Position_SetRef(FOC_t *foc, uint16_t pos_raw)
         return;
     }
     foc->pos_ref = pos_raw;
+    /* 折叠到新 setpoint 附近, 保证切目标时走最短路径 */
+    fold_unwrapped_to(foc, (float)pos_raw);
     CTL_PID_SetSetpoint(&foc->pid_pos, (float)pos_raw);
 }
 
@@ -48,6 +74,8 @@ void FOC_Position_Start(FOC_t *foc)
     foc->unwrapped_pos = (float)foc->raw_angle;
     foc->raw_prev      = foc->raw_angle;
     CTL_PID_Reset(&foc->pid_pos);
+    /* 折叠到初始 setpoint 附近, 保证启动时走最短路径 */
+    fold_unwrapped_to(foc, (float)foc->pos_ref);
     CTL_PID_SetSetpoint(&foc->pid_pos, (float)foc->pos_ref);
 }
 
@@ -67,7 +95,6 @@ void FOC_Position_Run(FOC_t *foc)
     float speed_cmd;
     float raw_delta;
     float raw_now;
-    float sp, diff;
 
     if (foc == NULL)
     {
@@ -92,24 +119,11 @@ void FOC_Position_Run(FOC_t *foc)
     foc->unwrapped_pos = foc->unwrapped_pos + raw_delta;
     foc->raw_prev = (uint16_t)raw_now;
 
-    /* 回绕到 setpoint ±8192 范围内（同时平移 setpoint 保持误差不变）
-     * 只平移 unwrapped_pos 会导致 PID 误差符号翻转（越过 180° 时电机助力而非抵抗）。
-     * 同步平移 setpoint 后: error = (sp-Δ) - (fb-Δ) = sp-fb, 误差完全不变。
-     * 位置环 Kr=1.0, 因此 prop_term = Kp*(Kr*sp - fb) 也保持不变。 */
-    sp   = foc->pid_pos.setpoint;
-    diff = foc->unwrapped_pos - sp;
-    if (diff >  8192.0f)
-    {
-        foc->unwrapped_pos    = foc->unwrapped_pos - 16384.0f;
-        foc->pid_pos.setpoint = foc->pid_pos.setpoint - 16384.0f;
-    }
-    if (diff < -8192.0f)
-    {
-        foc->unwrapped_pos    = foc->unwrapped_pos + 16384.0f;
-        foc->pid_pos.setpoint = foc->pid_pos.setpoint + 16384.0f;
-    }
-
-    /* 位置 PI: 输入展开后的无回绕位置, 输出 RPM 指令 */
+    /* 位置 PI: unwrapped_pos 如实累积, setpoint 保持不变
+     *
+     * 运行时不折叠: 外力推开电机 → PID 连续反向抵抗 → 松手回到 setpoint。
+     * 最短路径折叠在 SetRef/Start 时已做, 运行时无需再处理。
+     * 若推过 180°, PID 取长路径回位——位置锁定下大角度偏移极少, 可接受。 */
     speed_cmd = CTL_PID_Update(&foc->pid_pos, foc->unwrapped_pos);
 
     if (speed_cmd >  foc->pos_speed_limit)

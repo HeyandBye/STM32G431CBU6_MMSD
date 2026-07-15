@@ -231,23 +231,7 @@ STM32_Programmer_CLI --connect port=SWD \
 
 ---
 
-## 10. Development Log
-
-| Date | Milestone |
-|------|-----------|
-| 2026-06-17 | ADC sampling driver completed |
-| 2026-06-18 | TIM1 PWM driver completed (20kHz) |
-| 2026-06-22 | ADC+PWM joint verification passed |
-| 2026-06-23 | AS5048A encoder SPI driver completed (~10µs/read) |
-| 2026-06-24 | Three-loop cascaded FOC completed, total ISR time ~33µs |
-| 2026-06-25 | Auto-step / manual teach / damper modes all implemented |
-| 2026-06-27 | Communication layer: VOFA+ JustFloat + online PID tuning |
-| 2026-06-30 | v0.1.0 release |
-| 2026-07-01 | Business layer code standard compliance (MISRA + Allman style) |
-
----
-
-## 11. Coding Standards
+## 10. Coding Standards
 
 The business layer source code (ApplicationLayer / CommunicationLayer / ControlLayer / DriverLayer) follows:
 
